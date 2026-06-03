@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call World</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body>
+
+    <div id="auth-view" class="view-container">
+        <div class="card auth-card">
+            <h1 class="brand">Call World</h1>
+            <p class="subtitle">Log in to host a meeting</p>
+            
+            <div id="phone-step">
+                <div class="input-group">
+                    <span class="country-code">+91</span>
+                    <input type="tel" id="phone-input" placeholder="Enter mobile number" maxlength="10">
+                </div>
+                <div id="recaptcha-container"></div>
+                <button id="send-otp-btn" class="primary-btn">Send OTP</button>
+            </div>
+
+            <div id="otp-step" class="hidden">
+                <input type="text" id="otp-input" placeholder="Enter 6-digit OTP" maxlength="6">
+                <button id="verify-otp-btn" class="primary-btn">Verify & Log In</button>
+                <button id="back-btn" class="text-btn">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="view-container hidden">
+        <header class="top-bar">
+            <h1 class="brand">Call World</h1>
+            <button id="logout-btn" class="text-btn">Log out</button>
+        </header>
+        <main class="dashboard-content">
+            <div class="action-card">
+                <h2>Ready to connect?</h2>
+                <p>Generate a unique link and share it with others to start a group chat.</p>
+                <button id="generate-link-btn" class="primary-btn with-icon">
+                    <span class="material-symbols-outlined">video_call</span>
+                    New Meeting
+                </button>
+                
+                <div id="link-container" class="hidden">
+                    <p class="link-label">Share this link with others:</p>
+                    <div class="link-box">
+                        <input type="text" id="meeting-link" readonly>
+                        <button id="copy-btn"><span class="material-symbols-outlined">content_copy</span></button>
+                    </div>
+                    <button id="join-now-btn" class="secondary-btn">Join Now</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="meeting-view" class="view-container meeting-ui hidden">
+        <div class="video-grid">
+            <div class="video-wrapper">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <div class="user-name">You</div>
+            </div>
+            </div>
+
+        <div class="meeting-controls">
+            <div class="control-left">
+                <span id="room-display"></span>
+            </div>
+            <div class="control-center">
+                <button id="mic-btn" class="icon-btn active"><span class="material-symbols-outlined">mic</span></button>
+                <button id="cam-btn" class="icon-btn active"><span class="material-symbols-outlined">videocam</span></button>
+                <button id="end-btn" class="icon-btn danger"><span class="material-symbols-outlined">call_end</span></button>
+            </div>
+            <div class="control-right">
+                <button class="icon-btn clear"><span class="material-symbols-outlined">info</span></button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html>
