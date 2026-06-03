@@ -6,7 +6,7 @@ import {
     signInWithPhoneNumber 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
-// Your actual Firebase Config
+// Your exact Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyAv4YOIRpkgDZCJznrmCBF0YQhQJtCAY88",
   authDomain: "call-world-bdbe6.firebaseapp.com",
@@ -34,17 +34,17 @@ const linkContainer = document.getElementById('link-container');
 const meetingLinkInput = document.getElementById('meeting-link');
 
 let currentRoom = "";
-let confirmationResult = null; // Stores the Firebase OTP session
+let confirmationResult = null; 
 
 // --- Routing & Initialization ---
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
 if (roomParam) {
-    // Guest joining via link: skip auth, go straight to meeting
+    // Guest joining via link
     currentRoom = roomParam;
     showView(meetingView);
-    joinVideoCall();
+    launchGuestCall(); // Call the safety loop function
 } else {
     // Host visiting the main page
     checkSession();
@@ -55,6 +55,18 @@ function showView(view) {
     dashboardView.classList.add('hidden');
     meetingView.classList.add('hidden');
     view.classList.remove('hidden');
+}
+
+// --- Safety Loop for ZegoCloud ---
+function launchGuestCall() {
+    // If Zego isn't fully loaded yet, wait 200ms and check again
+    if (typeof ZegoUIKitPrebuilt === 'undefined') {
+        console.log("Zego SDK loading, please wait...");
+        setTimeout(launchGuestCall, 200);
+        return;
+    }
+    // If it is loaded, start the meeting!
+    joinVideoCall();
 }
 
 // --- Session Management (7 Days) ---
@@ -157,7 +169,7 @@ document.getElementById('copy-btn').addEventListener('click', () => {
 // --- Join Button Listener ---
 document.getElementById('join-now-btn').addEventListener('click', () => {
     showView(meetingView);
-    joinVideoCall();
+    launchGuestCall(); // Call the safety loop function here too
 });
 
 // --- ZegoCloud Video Meeting ---
@@ -165,16 +177,7 @@ const ZEGO_APP_ID = 826320753;
 const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; 
 
 function joinVideoCall() {
-   // --- ZegoCloud Video Engine ---
-function joinVideoCall() {
     if (!currentRoom) return alert("No room ID found.");
-    
-    // Safety check: If Zego hasn't loaded yet, wait 500ms and try again
-    if (typeof ZegoUIKitPrebuilt === 'undefined') {
-        console.log("Zego SDK still loading, retrying in 500ms...");
-        setTimeout(joinVideoCall, 500);
-        return;
-    }
     
     const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
     const userID = Math.random().toString(36).substring(7);
