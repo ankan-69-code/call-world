@@ -182,29 +182,31 @@ function joinVideoCall() {
     const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
     const userID = Math.random().toString(36).substring(7);
 
-    const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        ZEGO_APP_ID, 
-        ZEGO_SERVER_SECRET, 
-        currentRoom, 
-        userID, 
-        userName
-    );
+    // Added the missing setTimeout opening wrapper here!
+    setTimeout(() => {
+        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+            ZEGO_APP_ID, 
+            ZEGO_SERVER_SECRET, 
+            currentRoom, 
+            userID, 
+            userName
+        );
 
-    const zp = ZegoUIKitPrebuilt.create(kitToken);
+        const zp = ZegoUIKitPrebuilt.create(kitToken);
 
-    zp.joinRoom({
-        container: document.getElementById('zego-container'),
-        sharedLinks: [{
-            name: 'Meeting Link',
-            url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
-        }],
-        scenario: {
-            mode: ZegoUIKitPrebuilt.GroupCall, 
-        },
-        showScreenSharingButton: true,
-        onLeaveRoom: () => {
-            window.location.href = window.location.pathname;
-        }
-    });
-}, 100);
+        zp.joinRoom({
+            container: document.getElementById('zego-container'),
+            sharedLinks: [{
+                name: 'Meeting Link',
+                url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
+            }],
+            scenario: {
+                mode: ZegoUIKitPrebuilt.GroupCall, 
+            },
+            showScreenSharingButton: true,
+            onLeaveRoom: () => {
+                window.location.href = window.location.pathname;
+            }
+        });
+    }, 100); 
 }
