@@ -8,12 +8,13 @@ import {
 
 // TODO: Replace this with your actual config from Firebase
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_ID",
-    appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAv4YOIRpkgDZCJznrmCBF0YQhQJtCAY88",
+  authDomain: "call-world-bdbe6.firebaseapp.com",
+  projectId: "call-world-bdbe6",
+  storageBucket: "call-world-bdbe6.firebasestorage.app",
+  messagingSenderId: "417335991997",
+  appId: "1:417335991997:web:81983e3cad0b69484721d4",
+  measurementId: "G-YTXB18QFJ6"
 };
 
 // Initialize Firebase
