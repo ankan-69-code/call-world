@@ -6,7 +6,7 @@ import {
     signInWithPhoneNumber 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
-// TODO: Replace this with your actual config from Firebase
+// Your actual Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyAv4YOIRpkgDZCJznrmCBF0YQhQJtCAY88",
   authDomain: "call-world-bdbe6.firebaseapp.com",
@@ -34,7 +34,6 @@ const linkContainer = document.getElementById('link-container');
 const meetingLinkInput = document.getElementById('meeting-link');
 
 let currentRoom = "";
-let localStream = null;
 let confirmationResult = null; // Stores the Firebase OTP session
 
 // --- Routing & Initialization ---
@@ -45,8 +44,7 @@ if (roomParam) {
     // Guest joining via link: skip auth, go straight to meeting
     currentRoom = roomParam;
     showView(meetingView);
-    startCamera();
-    document.getElementById('room-display').innerText = `Room: ${currentRoom}`;
+    joinVideoCall();
 } else {
     // Host visiting the main page
     checkSession();
@@ -101,14 +99,12 @@ document.getElementById('send-otp-btn').addEventListener('click', () => {
         
         signInWithPhoneNumber(auth, formattedPhoneNumber, appVerifier)
             .then((result) => {
-                // SMS sent successfully
                 confirmationResult = result;
                 phoneStep.classList.add('hidden');
                 otpStep.classList.remove('hidden');
             }).catch((error) => {
                 console.error("SMS not sent", error);
                 alert("Failed to send OTP. Check the console for details.");
-                // Reset recaptcha so the user can try again
                 window.recaptchaVerifier.render().then(function(widgetId) {
                     grecaptcha.reset(widgetId);
                 });
@@ -123,7 +119,6 @@ document.getElementById('verify-otp-btn').addEventListener('click', () => {
     
     if (code.length >= 4 && confirmationResult) {
         confirmationResult.confirm(code).then((result) => {
-            // User successfully verified!
             const user = result.user;
             console.log("Logged in as:", user.phoneNumber);
             createSession();
@@ -159,66 +154,47 @@ document.getElementById('copy-btn').addEventListener('click', () => {
     alert("Link copied to clipboard!");
 });
 
+// --- Join Button Listener ---
 document.getElementById('join-now-btn').addEventListener('click', () => {
     showView(meetingView);
-    startCamera();
-    document.getElementById('room-display').innerText = `Room: ${currentRoom}`;
+    joinVideoCall();
 });
 
 // --- ZegoCloud Video Meeting ---
-
-// TODO: Replace with your ZegoCloud credentials from Step 1
-const ZEGO_APP_ID = 826320753; // Must be numbers (no quotes)
-const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; // Must be in quotes
+const ZEGO_APP_ID = 826320753; 
+const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; 
 
 function joinVideoCall() {
-    // 1. Ensure we have a room name and a user ID
     if (!currentRoom) return alert("No room ID found.");
     
-    // Use the phone number as the username if logged in, otherwise just use "Guest"
     const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
-    // Create a random ID for the Zego system
     const userID = Math.random().toString(36).substring(7);
 
-    // 2. Generate a token for this specific room
-    const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        ZEGO_APP_ID, 
-        ZEGO_SERVER_SECRET, 
-        currentRoom, 
-        userID, 
-        userName
-    );
+    // Short timeout allows the DOM container to render perfectly before loading Zego
+    setTimeout(() => {
+        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+            ZEGO_APP_ID, 
+            ZEGO_SERVER_SECRET, 
+            currentRoom, 
+            userID, 
+            userName
+        );
 
-    // 3. Create the ZegoCloud instance
-    const zp = ZegoUIKitPrebuilt.create(kitToken);
+        const zp = ZegoUIKitPrebuilt.create(kitToken);
 
-    // 4. Join the room and inject the video UI into our HTML container
-    zp.joinRoom({
-        container: document.getElementById('zego-container'),
-        sharedLinks: [{
-            name: 'Meeting Link',
-            url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
-        }],
-        scenario: {
-            mode: ZegoUIKitPrebuilt.GroupCall, // Sets up a Google Meet style grid
-        },
-        showScreenSharingButton: true,
-        // When the user clicks the red "Leave" button, send them back to the dashboard
-        onLeaveRoom: () => {
-            window.location.href = window.location.pathname;
-        }
-    });
-}
-
-// Update our Join buttons to trigger Zego instead of the old camera function
-document.getElementById('join-now-btn').addEventListener('click', () => {
-    showView(meetingView);
-    joinVideoCall();
-});
-
-// Check if a guest is joining directly from a URL
-if (roomParam) {
-    currentRoom = roomParam;
-    showView(meetingView);
-    joinVideoCall();
+        zp.joinRoom({
+            container: document.getElementById('zego-container'),
+            sharedLinks: [{
+                name: 'Meeting Link',
+                url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
+            }],
+            scenario: {
+                mode: ZegoUIKitPrebuilt.GroupCall, 
+            },
+            showScreenSharingButton: true,
+            onLeaveRoom: () => {
+                window.location.href = window.location.pathname;
+            }
+        });
+    }, 100);
 }
