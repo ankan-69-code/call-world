@@ -177,7 +177,6 @@ const ZEGO_APP_ID = 826320753;
 const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; 
 
 function joinVideoCall() {
-   function joinVideoCall() {
     if (!currentRoom) return alert("No room ID found.");
     
     const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
