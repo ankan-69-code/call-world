@@ -165,40 +165,60 @@ document.getElementById('join-now-btn').addEventListener('click', () => {
     document.getElementById('room-display').innerText = `Room: ${currentRoom}`;
 });
 
-// --- Meeting Camera Controls ---
-async function startCamera() {
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById('localVideo').srcObject = localStream;
-    } catch (err) {
-        console.error("Failed to access camera", err);
-        alert("Camera access denied.");
-    }
+// --- ZegoCloud Video Meeting ---
+
+// TODO: Replace with your ZegoCloud credentials from Step 1
+const ZEGO_APP_ID = 826320753; // Must be numbers (no quotes)
+const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; // Must be in quotes
+
+function joinVideoCall() {
+    // 1. Ensure we have a room name and a user ID
+    if (!currentRoom) return alert("No room ID found.");
+    
+    // Use the phone number as the username if logged in, otherwise just use "Guest"
+    const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
+    // Create a random ID for the Zego system
+    const userID = Math.random().toString(36).substring(7);
+
+    // 2. Generate a token for this specific room
+    const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+        ZEGO_APP_ID, 
+        ZEGO_SERVER_SECRET, 
+        currentRoom, 
+        userID, 
+        userName
+    );
+
+    // 3. Create the ZegoCloud instance
+    const zp = ZegoUIKitPrebuilt.create(kitToken);
+
+    // 4. Join the room and inject the video UI into our HTML container
+    zp.joinRoom({
+        container: document.getElementById('zego-container'),
+        sharedLinks: [{
+            name: 'Meeting Link',
+            url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
+        }],
+        scenario: {
+            mode: ZegoUIKitPrebuilt.GroupCall, // Sets up a Google Meet style grid
+        },
+        showScreenSharingButton: true,
+        // When the user clicks the red "Leave" button, send them back to the dashboard
+        onLeaveRoom: () => {
+            window.location.href = window.location.pathname;
+        }
+    });
 }
 
-document.getElementById('mic-btn').addEventListener('click', (e) => {
-    const audioTrack = localStream?.getAudioTracks()[0];
-    if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        const icon = e.currentTarget.querySelector('span');
-        icon.innerText = audioTrack.enabled ? 'mic' : 'mic_off';
-        e.currentTarget.style.backgroundColor = audioTrack.enabled ? '#3c4043' : '#ea4335';
-    }
+// Update our Join buttons to trigger Zego instead of the old camera function
+document.getElementById('join-now-btn').addEventListener('click', () => {
+    showView(meetingView);
+    joinVideoCall();
 });
 
-document.getElementById('cam-btn').addEventListener('click', (e) => {
-    const videoTrack = localStream?.getVideoTracks()[0];
-    if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        const icon = e.currentTarget.querySelector('span');
-        icon.innerText = videoTrack.enabled ? 'videocam' : 'videocam_off';
-        e.currentTarget.style.backgroundColor = videoTrack.enabled ? '#3c4043' : '#ea4335';
-    }
-});
-
-document.getElementById('end-btn').addEventListener('click', () => {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-    }
-    window.location.href = window.location.pathname;
-});
+// Check if a guest is joining directly from a URL
+if (roomParam) {
+    currentRoom = roomParam;
+    showView(meetingView);
+    joinVideoCall();
+}
