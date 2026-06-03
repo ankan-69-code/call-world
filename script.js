@@ -165,36 +165,42 @@ const ZEGO_APP_ID = 826320753;
 const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; 
 
 function joinVideoCall() {
+   // --- ZegoCloud Video Engine ---
+function joinVideoCall() {
     if (!currentRoom) return alert("No room ID found.");
+    
+    // Safety check: If Zego hasn't loaded yet, wait 500ms and try again
+    if (typeof ZegoUIKitPrebuilt === 'undefined') {
+        console.log("Zego SDK still loading, retrying in 500ms...");
+        setTimeout(joinVideoCall, 500);
+        return;
+    }
     
     const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
     const userID = Math.random().toString(36).substring(7);
 
-    // Short timeout allows the DOM container to render perfectly before loading Zego
-    setTimeout(() => {
-        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-            ZEGO_APP_ID, 
-            ZEGO_SERVER_SECRET, 
-            currentRoom, 
-            userID, 
-            userName
-        );
+    const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+        ZEGO_APP_ID, 
+        ZEGO_SERVER_SECRET, 
+        currentRoom, 
+        userID, 
+        userName
+    );
 
-        const zp = ZegoUIKitPrebuilt.create(kitToken);
+    const zp = ZegoUIKitPrebuilt.create(kitToken);
 
-        zp.joinRoom({
-            container: document.getElementById('zego-container'),
-            sharedLinks: [{
-                name: 'Meeting Link',
-                url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
-            }],
-            scenario: {
-                mode: ZegoUIKitPrebuilt.GroupCall, 
-            },
-            showScreenSharingButton: true,
-            onLeaveRoom: () => {
-                window.location.href = window.location.pathname;
-            }
-        });
-    }, 100);
+    zp.joinRoom({
+        container: document.getElementById('zego-container'),
+        sharedLinks: [{
+            name: 'Meeting Link',
+            url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
+        }],
+        scenario: {
+            mode: ZegoUIKitPrebuilt.GroupCall, 
+        },
+        showScreenSharingButton: true,
+        onLeaveRoom: () => {
+            window.location.href = window.location.pathname;
+        }
+    });
 }
