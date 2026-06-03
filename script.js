@@ -1,10 +1,9 @@
+// Import Firebase SDKs
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { 
-    getAuth, 
-    RecaptchaVerifier, 
-    signInWithPhoneNumber 
-} from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, getDoc, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
+// Your exact Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyAv4YOIRpkgDZCJznrmCBF0YQhQJtCAY88",
   authDomain: "call-world-bdbe6.firebaseapp.com",
@@ -15,9 +14,12 @@ const firebaseConfig = {
   measurementId: "G-YTXB18QFJ6"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 
+// --- DOM Elements ---
 const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
 const meetingView = document.getElementById('meeting-view');
@@ -31,14 +33,29 @@ const meetingLinkInput = document.getElementById('meeting-link');
 let currentRoom = "";
 let confirmationResult = null; 
 
+// --- WebRTC State ---
+const configuration = {
+    iceServers: [
+        { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+    ]
+};
+let peerConnection = null;
+let localStream = null;
+let remoteStream = null;
+const localVideo = document.getElementById('local-video');
+const remoteVideo = document.getElementById('remote-video');
+
+// --- Routing & Initialization ---
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
 if (roomParam) {
+    // Guest joining via link
     currentRoom = roomParam;
     showView(meetingView);
-    launchGuestCall();
+    startGuestCall(); 
 } else {
+    // Host visiting the main page
     checkSession();
 }
 
@@ -49,15 +66,7 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-function launchGuestCall() {
-    if (typeof ZegoUIKitPrebuilt === 'undefined') {
-        console.log("Zego SDK loading, please wait...");
-        setTimeout(launchGuestCall, 200);
-        return;
-    }
-    joinVideoCall();
-}
-
+// --- Session Management (7 Days) ---
 function checkSession() {
     const sessionExpiry = localStorage.getItem('cw_session');
     if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
@@ -84,6 +93,7 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     otpInput.value = "";
 });
 
+// --- Firebase Phone Authentication ---
 auth.settings.appVerificationDisabledForTesting = false; 
 window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
     'size': 'invisible'
@@ -95,7 +105,6 @@ document.getElementById('send-otp-btn').addEventListener('click', () => {
 
     if (phone.length === 10) {
         const appVerifier = window.recaptchaVerifier;
-        
         signInWithPhoneNumber(auth, formattedPhoneNumber, appVerifier)
             .then((result) => {
                 confirmationResult = result;
@@ -115,10 +124,8 @@ document.getElementById('send-otp-btn').addEventListener('click', () => {
 
 document.getElementById('verify-otp-btn').addEventListener('click', () => {
     const code = otpInput.value;
-    
     if (code.length >= 4 && confirmationResult) {
-        confirmationResult.confirm(code).then((result) => {
-            console.log("Logged in:", result.user.phoneNumber);
+        confirmationResult.confirm(code).then(() => {
             createSession();
         }).catch((error) => {
             console.error("Bad OTP", error);
@@ -134,9 +141,11 @@ document.getElementById('back-btn').addEventListener('click', () => {
     phoneStep.classList.remove('hidden');
 });
 
+// --- Dashboard Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
+    // Generate a random room string
     const randomStr = Math.random().toString(36).substring(2, 11);
-    currentRoom = `${randomStr.slice(0,3)}-${randomStr.slice(3,7)}-${randomStr.slice(7)}`;
+    currentRoom = `room-${randomStr}`;
     
     const baseUrl = window.location.origin + window.location.pathname;
     meetingLinkInput.value = `${baseUrl}?room=${currentRoom}`;
@@ -149,61 +158,147 @@ document.getElementById('copy-btn').addEventListener('click', () => {
     alert("Link copied!");
 });
 
-document.getElementById('join-now-btn').addEventListener('click', () => {
-    showView(meetingView);
-    launchGuestCall();
-});
+// --- WebRTC Logic ---
 
-const ZEGO_APP_ID = 826320753; 
-const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; 
-
-function joinVideoCall() {
-    if (!currentRoom) return alert("No room ID found.");
+async function openUserMedia() {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    remoteStream = new MediaStream();
     
-    const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
-    const userID = Math.random().toString(36).substring(7);
+    localVideo.srcObject = localStream;
+    remoteVideo.srcObject = remoteStream;
+}
 
-    setTimeout(() => {
-        let zegoContainer = document.getElementById('zego-container');
-        
-        if (!zegoContainer) {
-            console.warn("Building container dynamically...");
-            zegoContainer = document.createElement('div');
-            zegoContainer.id = 'zego-container';
-            zegoContainer.style.width = '100vw';
-            zegoContainer.style.height = '100vh';
-            
-            const meetingViewContainer = document.getElementById('meeting-view');
-            if (meetingViewContainer) {
-                meetingViewContainer.appendChild(zegoContainer);
-            } else {
-                document.body.appendChild(zegoContainer);
-            }
+function registerPeerConnectionListeners() {
+    peerConnection.addEventListener('track', event => {
+        event.streams[0].getTracks().forEach(track => {
+            remoteStream.addTrack(track);
+        });
+    });
+}
+
+// Host creates the connection offer
+async function createRoom(roomId) {
+    const roomRef = doc(db, 'rooms', roomId);
+    peerConnection = new RTCPeerConnection(configuration);
+    registerPeerConnectionListeners();
+
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    const callerCandidatesCollection = collection(roomRef, 'callerCandidates');
+    peerConnection.addEventListener('icecandidate', event => {
+        if (!event.candidate) return;
+        addDoc(callerCandidatesCollection, event.candidate.toJSON());
+    });
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    const roomWithOffer = {
+        offer: {
+            type: offer.type,
+            sdp: offer.sdp,
+        },
+    };
+    await setDoc(roomRef, roomWithOffer);
+
+    onSnapshot(roomRef, async snapshot => {
+        const data = snapshot.data();
+        if (!peerConnection.currentRemoteDescription && data && data.answer) {
+            const rtcSessionDescription = new RTCSessionDescription(data.answer);
+            await peerConnection.setRemoteDescription(rtcSessionDescription);
         }
+    });
 
-        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-            ZEGO_APP_ID, 
-            ZEGO_SERVER_SECRET, 
-            currentRoom, 
-            userID, 
-            userName
-        );
-
-        const zp = ZegoUIKitPrebuilt.create(kitToken);
-
-        zp.joinRoom({
-            container: zegoContainer,
-            sharedLinks: [{
-                name: 'Meeting Link',
-                url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
-            }],
-            scenario: {
-                mode: ZegoUIKitPrebuilt.GroupCall, 
-            },
-            showScreenSharingButton: true,
-            onLeaveRoom: () => {
-                window.location.href = window.location.pathname;
+    onSnapshot(collection(roomRef, 'calleeCandidates'), snapshot => {
+        snapshot.docChanges().forEach(async change => {
+            if (change.type === 'added') {
+                let data = change.doc.data();
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data));
             }
         });
-    }, 100); 
+    });
 }
+
+// Guest joins and answers the connection
+async function joinRoomById(roomId) {
+    const roomRef = doc(db, 'rooms', roomId);
+    const roomSnapshot = await getDoc(roomRef);
+
+    if (!roomSnapshot.exists()) {
+        alert("Meeting room is waiting for host to join, or doesn't exist.");
+        return;
+    }
+
+    peerConnection = new RTCPeerConnection(configuration);
+    registerPeerConnectionListeners();
+
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    const calleeCandidatesCollection = collection(roomRef, 'calleeCandidates');
+    peerConnection.addEventListener('icecandidate', event => {
+        if (!event.candidate) return;
+        addDoc(calleeCandidatesCollection, event.candidate.toJSON());
+    });
+
+    const offer = roomSnapshot.data().offer;
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    const roomWithAnswer = {
+        answer: {
+            type: answer.type,
+            sdp: answer.sdp,
+        }
+    };
+    await setDoc(roomRef, roomWithAnswer, { merge: true });
+
+    onSnapshot(collection(roomRef, 'callerCandidates'), snapshot => {
+        snapshot.docChanges().forEach(async change => {
+            if (change.type === 'added') {
+                let data = change.doc.data();
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data));
+            }
+        });
+    });
+}
+
+// --- Join Button Listeners ---
+document.getElementById('join-now-btn').addEventListener('click', async () => {
+    showView(meetingView);
+    await openUserMedia();
+    await createRoom(currentRoom);
+});
+
+async function startGuestCall() {
+    await openUserMedia();
+    await joinRoomById(currentRoom);
+}
+
+// --- Video Controls ---
+document.getElementById('toggle-mic-btn').addEventListener('click', () => {
+    const audioTrack = localStream.getAudioTracks()[0];
+    audioTrack.enabled = !audioTrack.enabled;
+    document.getElementById('mic-icon').innerText = audioTrack.enabled ? 'mic' : 'mic_off';
+});
+
+document.getElementById('toggle-cam-btn').addEventListener('click', () => {
+    const videoTrack = localStream.getVideoTracks()[0];
+    videoTrack.enabled = !videoTrack.enabled;
+    document.getElementById('cam-icon').innerText = videoTrack.enabled ? 'videocam' : 'videocam_off';
+});
+
+document.getElementById('hangup-btn').addEventListener('click', () => {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+    if (peerConnection) {
+        peerConnection.close();
+    }
+    window.location.href = window.location.pathname;
+});
