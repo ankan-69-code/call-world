@@ -177,13 +177,33 @@ const ZEGO_APP_ID = 826320753;
 const ZEGO_SERVER_SECRET = "1f98403b7ffca9f9595f16d2264b5627be90cc134a793353626ec000ea328cad"; 
 
 function joinVideoCall() {
+   function joinVideoCall() {
     if (!currentRoom) return alert("No room ID found.");
     
     const userName = auth.currentUser ? auth.currentUser.phoneNumber : "Guest";
     const userID = Math.random().toString(36).substring(7);
 
-    // Added the missing setTimeout opening wrapper here!
     setTimeout(() => {
+        // --- FAIL-SAFE: Force-create the container if the browser cache is hiding it ---
+        let zegoContainer = document.getElementById('zego-container');
+        
+        if (!zegoContainer) {
+            console.warn("Cache glitch detected! Building the container dynamically...");
+            zegoContainer = document.createElement('div');
+            zegoContainer.id = 'zego-container';
+            zegoContainer.style.width = '100vw';
+            zegoContainer.style.height = '100vh';
+            
+            // Try to put it in the meeting view, otherwise just slap it on the body
+            const meetingViewContainer = document.getElementById('meeting-view');
+            if (meetingViewContainer) {
+                meetingViewContainer.appendChild(zegoContainer);
+            } else {
+                document.body.appendChild(zegoContainer);
+            }
+        }
+        // ------------------------------------------------------------------------------
+
         const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
             ZEGO_APP_ID, 
             ZEGO_SERVER_SECRET, 
@@ -195,7 +215,7 @@ function joinVideoCall() {
         const zp = ZegoUIKitPrebuilt.create(kitToken);
 
         zp.joinRoom({
-            container: document.getElementById('zego-container'),
+            container: zegoContainer, // Pass the guaranteed container
             sharedLinks: [{
                 name: 'Meeting Link',
                 url: window.location.origin + window.location.pathname + '?room=' + currentRoom,
