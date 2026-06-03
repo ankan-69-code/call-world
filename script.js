@@ -8,15 +8,13 @@ import {
 
 // TODO: Replace this with your actual config from Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyAv4YOIRpkgDZCJznrmCBF0YQhQJtCAY88",
-  authDomain: "call-world-bdbe6.firebaseapp.com",
-  projectId: "call-world-bdbe6",
-  storageBucket: "call-world-bdbe6.firebasestorage.app",
-  messagingSenderId: "417335991997",
-  appId: "1:417335991997:web:81983e3cad0b69484721d4",
-  measurementId: "G-YTXB18QFJ6"
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_MESSAGING_ID",
+    appId: "YOUR_APP_ID"
 };
-
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -38,18 +36,63 @@ let currentRoom = "";
 let localStream = null;
 let confirmationResult = null; // Stores the Firebase OTP session
 
-// --- Initialize reCAPTCHA (Invisible) ---
+// --- Routing & Initialization ---
+const urlParams = new URLSearchParams(window.location.search);
+const roomParam = urlParams.get('room');
+
+if (roomParam) {
+    // Guest joining via link: skip auth, go straight to meeting
+    currentRoom = roomParam;
+    showView(meetingView);
+    startCamera();
+    document.getElementById('room-display').innerText = `Room: ${currentRoom}`;
+} else {
+    // Host visiting the main page
+    checkSession();
+}
+
+function showView(view) {
+    authView.classList.add('hidden');
+    dashboardView.classList.add('hidden');
+    meetingView.classList.add('hidden');
+    view.classList.remove('hidden');
+}
+
+// --- Session Management (7 Days) ---
+function checkSession() {
+    const sessionExpiry = localStorage.getItem('cw_session');
+    if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
+        showView(dashboardView);
+    } else {
+        localStorage.removeItem('cw_session');
+        showView(authView);
+    }
+}
+
+function createSession() {
+    const expiryDate = Date.now() + (7 * 24 * 60 * 60 * 1000);
+    localStorage.setItem('cw_session', expiryDate);
+    showView(dashboardView);
+}
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('cw_session');
+    linkContainer.classList.add('hidden');
+    showView(authView);
+    phoneStep.classList.remove('hidden');
+    otpStep.classList.add('hidden');
+    phoneInput.value = "";
+    otpInput.value = "";
+});
+
+// --- Firebase Phone Authentication ---
 auth.settings.appVerificationDisabledForTesting = false; 
 window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
     'size': 'invisible'
 });
 
-// --- Real Auth / OTP Flow ---
 document.getElementById('send-otp-btn').addEventListener('click', () => {
     const phone = phoneInput.value;
-    
-    // Firebase requires phone numbers in E.164 format (e.g., +919876543210)
-    // Assuming the country code +91 is hardcoded in your UI
     const formattedPhoneNumber = `+91${phone}`; 
 
     if (phone.length === 10) {
@@ -77,66 +120,18 @@ document.getElementById('send-otp-btn').addEventListener('click', () => {
 document.getElementById('verify-otp-btn').addEventListener('click', () => {
     const code = otpInput.value;
     
-    if (code.length >= 4) {
+    if (code.length >= 4 && confirmationResult) {
         confirmationResult.confirm(code).then((result) => {
             // User successfully verified!
             const user = result.user;
             console.log("Logged in as:", user.phoneNumber);
-            createSession(); // Calls the 7-day local storage function from before
+            createSession();
         }).catch((error) => {
             console.error("Bad OTP", error);
             alert("Invalid OTP. Try again.");
         });
-    }
-});
-
-// --- Session Management ---
-function checkSession() {
-    const sessionExpiry = localStorage.getItem('cw_session');
-    if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
-        showView(dashboardView);
     } else {
-        localStorage.removeItem('cw_session');
-        showView(authView);
-    }
-}
-
-function createSession() {
-    // Set expiry for 7 days (7 * 24 * 60 * 60 * 1000 ms)
-    const expiryDate = Date.now() + (7 * 24 * 60 * 60 * 1000);
-    localStorage.setItem('cw_session', expiryDate);
-    showView(dashboardView);
-}
-
-document.getElementById('logout-btn').addEventListener('click', () => {
-    localStorage.removeItem('cw_session');
-    linkContainer.classList.add('hidden');
-    showView(authView);
-    phoneStep.classList.remove('hidden');
-    otpStep.classList.add('hidden');
-    phoneInput.value = "";
-    otpInput.value = "";
-});
-
-// --- Auth / OTP Simulation ---
-document.getElementById('send-otp-btn').addEventListener('click', () => {
-    const phone = phoneInput.value;
-    if (phone.length === 10) {
-        // Simulate sending OTP
-        generatedOTP = Math.floor(1000 + Math.random() * 9000).toString();
-        alert(`(Simulated) OTP sent to ${phone}: ${generatedOTP}`);
-        phoneStep.classList.add('hidden');
-        otpStep.classList.remove('hidden');
-    } else {
-        alert("Please enter a valid 10-digit mobile number.");
-    }
-});
-
-document.getElementById('verify-otp-btn').addEventListener('click', () => {
-    if (otpInput.value === generatedOTP) {
-        createSession();
-    } else {
-        alert("Invalid OTP. Try again.");
+        alert("Please wait for the OTP to arrive and enter it.");
     }
 });
 
@@ -147,11 +142,9 @@ document.getElementById('back-btn').addEventListener('click', () => {
 
 // --- Dashboard Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
-    // Generate a random 9-character room string (like Google Meet's abc-defg-hij)
     const randomStr = Math.random().toString(36).substring(2, 11);
     currentRoom = `${randomStr.slice(0,3)}-${randomStr.slice(3,7)}-${randomStr.slice(7)}`;
     
-    // Create the full join URL
     const baseUrl = window.location.origin + window.location.pathname;
     const joinUrl = `${baseUrl}?room=${currentRoom}`;
     
@@ -206,6 +199,5 @@ document.getElementById('end-btn').addEventListener('click', () => {
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
     }
-    // Remove room param and reload to go back to dashboard
     window.location.href = window.location.pathname;
 });
