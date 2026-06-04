@@ -230,3 +230,64 @@ button { font-family: inherit; cursor: pointer; border: none; }
 .icon-btn.danger:hover {
     background: var(--danger); color: white;
 }
+/* =========================================
+   MOBILE RESPONSIVENESS (PHONES & TABLETS)
+========================================= */
+
+@media (max-width: 768px) {
+    /* 1. Remove all padding around the main screen */
+    .view-container {
+        padding: 0;
+    }
+
+    /* 2. Stretch the video container edge-to-edge (100% of the screen) */
+    .video-container {
+        height: 100vh;
+        width: 100vw;
+        max-width: none;
+        border-radius: 0; /* Remove rounded corners */
+        box-shadow: none;
+        border: none;
+    }
+
+    /* 3. Give the videos more room to breathe on small screens */
+    .video-grid {
+        padding: 10px;
+        padding-bottom: 100px; /* Leave space for controls */
+        gap: 10px;
+    }
+
+    /* 4. Let remote videos stack nicely */
+    .video-grid video {
+        flex: 1 1 100%; /* Take up the full width of the phone if alone/few */
+        max-width: 100%;
+        max-height: 45vh; /* Allow them to be taller */
+        border-radius: 12px;
+    }
+
+    /* 5. Shrink your Picture-in-Picture so it doesn't block their face */
+    #local-video.pip {
+        bottom: 100px; /* Sit right above the buttons */
+        right: 15px;
+        width: 25%;
+        min-width: 100px;
+        max-width: 140px; /* Smaller max width for phones */
+        border-radius: 8px;
+        border-width: 1px;
+    }
+
+    /* 6. Compact the floating buttons */
+    .meeting-controls {
+        bottom: 20px;
+        width: 90%;
+        max-width: 320px;
+        padding: 10px 20px;
+        gap: 10px;
+        border-radius: 30px;
+    }
+
+    .icon-btn {
+        width: 45px;
+        height: 45px;
+    }
+}
