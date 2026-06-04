@@ -1,6 +1,6 @@
 // Import Firebase SDKs
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getFirestore, collection, doc, setDoc, getDocs, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -16,6 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
 
 // --- DOM Elements ---
 const views = {
@@ -23,13 +24,7 @@ const views = {
     dashboard: document.getElementById('dashboard-view'),
     meeting: document.getElementById('meeting-view')
 };
-const steps = {
-    phone: document.getElementById('phone-step'),
-    otp: document.getElementById('otp-step')
-};
 const inputs = {
-    phone: document.getElementById('phone-input'),
-    otp: document.getElementById('otp-input'),
     link: document.getElementById('meeting-link')
 };
 const linkContainer = document.getElementById('link-container');
@@ -37,14 +32,13 @@ const joinNowBtn = document.getElementById('join-now-btn');
 const videoGrid = document.getElementById('video-grid');
 
 let currentRoom = "";
-let confirmationResult = null; 
 
 // --- WebRTC Group State ---
 const myUserId = Math.random().toString(36).substring(2, 12); 
 const peerConnections = {}; 
 let localStream = null;
 
-// MOBILE NETWORK FIX: Added public STUN/TURN fallback addresses
+// MOBILE NETWORK FIX: Public STUN/TURN fallback endpoints
 const configuration = {
     iceServers: [
         { urls: 'stun:stun1.l.google.com:19302' },
@@ -102,58 +96,24 @@ function createSession() {
     showView(views.dashboard);
 }
 
+// Google Sign-In Execution Integration
+document.getElementById('google-signin-btn').addEventListener('click', () => {
+    signInWithPopup(auth, provider)
+        .then(() => {
+            createSession();
+        }).catch((err) => {
+            console.error("Google Authentication Failure:", err);
+            alert("Sign-In failed. Please try again.");
+        });
+});
+
 document.getElementById('logout-btn').addEventListener('click', () => {
-    localStorage.removeItem('cw_session');
-    linkContainer.classList.add('hidden');
-    joinNowBtn.classList.add('hidden');
-    inputs.phone.value = "";
-    inputs.otp.value = "";
-    steps.phone.classList.remove('hidden');
-    steps.otp.classList.add('hidden');
-    showView(views.auth);
-});
-
-// ==========================================
-//   MOBILE RECAPTCHA FIX (VISIBLE MODE)
-// ==========================================
-auth.settings.appVerificationDisabledForTesting = false; 
-
-window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 
-    'size': 'normal',
-    'callback': (response) => {
-        console.log("reCAPTCHA verified successfully.");
-    }
-});
-
-document.getElementById('send-otp-btn').addEventListener('click', () => {
-    if (inputs.phone.value.length === 10) {
-        signInWithPhoneNumber(auth, `+91${inputs.phone.value}`, window.recaptchaVerifier)
-            .then(result => {
-                confirmationResult = result;
-                steps.phone.classList.add('hidden');
-                steps.otp.classList.remove('hidden');
-            }).catch((err) => {
-                console.error("SMS Sending Error:", err);
-                alert("Failed to send OTP. Please complete the reCAPTCHA.");
-                // Reset recaptcha if it fails so the user can try again
-                window.recaptchaVerifier.render().then(function(widgetId) {
-                    grecaptcha.reset(widgetId);
-                });
-            });
-    } else { alert("Enter a valid 10-digit number."); }
-});
-
-document.getElementById('verify-otp-btn').addEventListener('click', () => {
-    if (inputs.otp.value.length >= 4 && confirmationResult) {
-        confirmationResult.confirm(inputs.otp.value)
-            .then(() => createSession())
-            .catch(() => alert("Invalid OTP."));
-    }
-});
-
-document.getElementById('back-btn').addEventListener('click', () => {
-    steps.otp.classList.add('hidden');
-    steps.phone.classList.remove('hidden');
+    signOut(auth).then(() => {
+        localStorage.removeItem('cw_session');
+        linkContainer.classList.add('hidden');
+        joinNowBtn.classList.add('hidden');
+        showView(views.auth);
+    });
 });
 
 // --- Link Generation ---
@@ -161,7 +121,7 @@ document.getElementById('generate-link-btn').addEventListener('click', () => {
     currentRoom = `room-${Math.random().toString(36).substring(2, 11)}`;
     inputs.link.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
     linkContainer.classList.remove('hidden');
-    joinNowBtn.classList.remove('hidden'); // Reveal join button
+    joinNowBtn.classList.remove('hidden'); 
 });
 
 document.getElementById('copy-btn').addEventListener('click', () => {
