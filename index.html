@@ -17,26 +17,19 @@
             <h1 class="brand">Call World</h1>
             <p class="subtitle">Secure, peer-to-peer video calls.</p>
             
-            <!-- Phone Step -->
-            <div id="phone-step">
-                <div class="input-group">
-                    <span class="country-code">+91</span>
-                    <input type="tel" id="phone-input" placeholder="Enter mobile number" maxlength="10">
-                </div>
-                
-                <!-- VISIBLE RECAPTCHA FOR STRICT MOBILE BROWSERS -->
-                <div id="recaptcha-container" style="margin-bottom: 20px; display: flex; justify-content: center;"></div>
-                
-                <button id="send-otp-btn" class="primary-btn">Send OTP</button>
-            </div>
-
-            <!-- OTP Step -->
-            <div id="otp-step" class="hidden">
-                <div class="input-group">
-                    <input type="text" id="otp-input" placeholder="Enter 6-digit OTP" maxlength="6">
-                </div>
-                <button id="verify-otp-btn" class="primary-btn">Verify & Login</button>
-                <button id="back-btn" class="text-btn">Back to phone</button>
+            <!-- GOOGLE SIGN-IN INTERFACE -->
+            <div id="google-auth-step" style="margin-top: 30px; display: flex; justify-content: center;">
+                <button id="google-signin-btn" class="primary-btn" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48" style="display: block;">
+                        <g>
+                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                            <path fill="#4285F4" d="M46.5 24c0-1.55-.15-3.24-.47-4.77H24v9.03h12.75c-.55 2.96-2.23 5.47-4.75 7.16l7.37 5.71C43.68 36.82 46.5 31.02 46.5 24z"></path>
+                            <path fill="#FBBC05" d="M10.54 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.98-6.19z"></path>
+                            <path fill="#34A353" d="M24 46.5c5.93 0 11.17-1.96 14.92-5.36l-7.37-5.71c-2.11 1.42-4.8 2.3-7.55 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 46.5 24 46.5z"></path>
+                        </g>
+                    </svg>
+                    Continue with Google
+                </button>
             </div>
         </div>
     </div>
@@ -56,7 +49,6 @@
                 <button id="copy-btn"><span class="material-symbols-outlined">content_copy</span></button>
             </div>
             
-            <!-- The Join button is revealed when a link is generated -->
             <button id="join-now-btn" class="primary-btn hidden" style="margin-top: 15px;">Join Meeting Now</button>
         </div>
     </div>
@@ -78,7 +70,7 @@
 
     <!-- WebRTC Legacy Adapter for older mobile phones -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js"></script>
-    <!-- Custom script with version bump to bypass mobile cache -->
-    <script type="module" src="script.js?v=visible-recaptcha"></script>
+    <!-- Script module tagged with fresh version to bypass cellular cache updates -->
+    <script type="module" src="script.js?v=google-auth"></script>
 </body>
 </html>
