@@ -50,13 +50,14 @@ const configuration = {
     ]
 };
 
-// --- MESH OPTIMIZATION: Throttling bandwidth for group calls ---
+// --- MESH OPTIMIZATION & MOBILE CAMERA FIX ---
 const mediaConstraints = {
     audio: {
         echoCancellation: true,
         noiseSuppression: true
     },
     video: { 
+        facingMode: "user", // Forces phone selfie cameras dynamically
         width: { ideal: 480, max: 640 }, 
         height: { ideal: 360, max: 480 }, 
         frameRate: { ideal: 15, max: 24 } 
@@ -167,12 +168,11 @@ function updateLayout() {
 // --- Group WebRTC Logic ---
 async function startGroupCall() {
     try {
-        // DEFENSIVE CHECK: Does this phone even support modern cameras?
+        // DEFENSIVE CHECK: Does this phone support modern WebRTC video?
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error("Browser too old for WebRTC video.");
         }
 
-        // Request camera with optimized constraints
         localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         
         const localVideo = document.createElement('video');
@@ -181,14 +181,13 @@ async function startGroupCall() {
         localVideo.autoplay = true;
         localVideo.muted = true; 
         
-        // OLD IPHONE FIX: Forces old Safari to play video inline instead of full screen
-        localVideo.setAttribute('playsinline', 'true'); 
+        // LEGACY PLAYBACK FIX: Stops mobile Safari from breaking to full screen
+        localVideo.setAttribute('playsinline', 'true');
         localVideo.playsInline = true;
         
         document.querySelector('.video-container').appendChild(localVideo);
         updateLayout();
 
-        // ... (Keep the rest of your Firebase database logic exactly the same below this) ...
         const roomRef = doc(db, 'rooms', currentRoom);
         const participantsRef = collection(roomRef, 'participants');
         
@@ -227,6 +226,8 @@ function createPeerConnection(targetUserId) {
     const remoteVideo = document.createElement('video');
     remoteVideo.id = `video-${targetUserId}`;
     remoteVideo.autoplay = true;
+    
+    remoteVideo.setAttribute('playsinline', 'true');
     remoteVideo.playsInline = true;
 
     pc.ontrack = event => {
@@ -250,7 +251,6 @@ function createPeerConnection(targetUserId) {
     return pc;
 }
 
-// THE MISSING FUNCTION IS BACK!
 async function initiateCallToUser(targetUserId) {
     const pc = createPeerConnection(targetUserId);
     const offer = await pc.createOffer();
@@ -334,27 +334,17 @@ function leaveCallGracefully() {
 }
 
 // ==========================================
-//   OS-LEVEL PICTURE-IN-PICTURE (FLOAT)
+//   OS-LEVEL PICTURE-IN-PICTURE (FIXED CLEAN)
 // ==========================================
 
 const pipBtn = document.getElementById('pip-btn');
 
-if(pipBtn) {
-    pipBtn.addEventListener('click', async () => {
-        const remoteVideo = videoGrid.querySelector('video');
-        
-        if (!remoteVideo) {
-            return alert("No one else is in the call yet!");
-        }
-
-        try // 1. Manual Click (Always works, bypasses browser security blocks)
-if(pipBtn) {
+if (pipBtn) {
     pipBtn.addEventListener('click', async () => {
         const remoteVideo = videoGrid.querySelector('video');
         if (!remoteVideo) return alert("No one else is in the call yet!");
 
         try {
-            // DEFENSIVE CHECK: If the phone doesn't have PiP, just alert them.
             if (!document.pictureInPictureEnabled) {
                 return alert("Your phone's browser does not support Picture-in-Picture.");
             }
@@ -368,15 +358,10 @@ if(pipBtn) {
             console.error("PiP failed:", error);
         }
     });
-}catch (error) {
-            console.error("PiP failed:", error);
-        }
-    });
 }
 
 document.addEventListener("visibilitychange", async () => {
     const remoteVideo = videoGrid.querySelector('video');
-    
     if (!remoteVideo || !document.pictureInPictureEnabled) return;
 
     if (document.hidden) {
@@ -385,7 +370,7 @@ document.addEventListener("visibilitychange", async () => {
                 await remoteVideo.requestPictureInPicture();
             }
         } catch (error) {
-            console.warn("Browser blocked auto-PiP. User must use the manual button.", error);
+            console.warn("Browser blocked auto-PiP. User must use manual action.", error);
         }
     } else {
         try {
