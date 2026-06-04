@@ -17,171 +17,191 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const authView = document.getElementById('auth-view');
-const dashboardView = document.getElementById('dashboard-view');
-const meetingView = document.getElementById('meeting-view');
-const phoneStep = document.getElementById('phone-step');
-const otpStep = document.getElementById('otp-step');
-const phoneInput = document.getElementById('phone-input');
-const otpInput = document.getElementById('otp-input');
+// --- DOM Elements ---
+const views = {
+    auth: document.getElementById('auth-view'),
+    dashboard: document.getElementById('dashboard-view'),
+    meeting: document.getElementById('meeting-view')
+};
+const steps = {
+    phone: document.getElementById('phone-step'),
+    otp: document.getElementById('otp-step')
+};
+const inputs = {
+    phone: document.getElementById('phone-input'),
+    otp: document.getElementById('otp-input'),
+    link: document.getElementById('meeting-link')
+};
 const linkContainer = document.getElementById('link-container');
-const meetingLinkInput = document.getElementById('meeting-link');
 const videoGrid = document.getElementById('video-grid');
 
 let currentRoom = "";
 let confirmationResult = null; 
 
+// --- WebRTC Group State ---
 const myUserId = Math.random().toString(36).substring(2, 12); 
 const peerConnections = {}; 
 let localStream = null;
 
 const configuration = {
     iceServers: [
-        { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
     ]
 };
 
+// --- MESH OPTIMIZATION: Throttling bandwidth for group calls ---
+const mediaConstraints = {
+    audio: {
+        echoCancellation: true,
+        noiseSuppression: true
+    },
+    video: { 
+        width: { ideal: 480, max: 640 }, 
+        height: { ideal: 360, max: 480 }, 
+        frameRate: { ideal: 15, max: 24 } 
+    }
+};
+
+// --- Routing & Initialization ---
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
 if (roomParam) {
     currentRoom = roomParam;
-    showView(meetingView);
+    showView(views.meeting);
     startGroupCall(); 
 } else {
     checkSession();
 }
 
-function showView(view) {
-    authView.classList.add('hidden');
-    dashboardView.classList.add('hidden');
-    meetingView.classList.add('hidden');
-    view.classList.remove('hidden');
+function showView(activeView) {
+    Object.values(views).forEach(v => v.classList.add('hidden'));
+    activeView.classList.remove('hidden');
 }
 
+// --- Auth & Session Management ---
 function checkSession() {
     const sessionExpiry = localStorage.getItem('cw_session');
     if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
-        showView(dashboardView);
+        showView(views.dashboard);
     } else {
         localStorage.removeItem('cw_session');
-        showView(authView);
+        showView(views.auth);
     }
 }
 
 function createSession() {
-    const expiryDate = Date.now() + (7 * 24 * 60 * 60 * 1000);
-    localStorage.setItem('cw_session', expiryDate);
-    showView(dashboardView);
+    localStorage.setItem('cw_session', Date.now() + (7 * 24 * 60 * 60 * 1000));
+    showView(views.dashboard);
 }
 
 document.getElementById('logout-btn').addEventListener('click', () => {
     localStorage.removeItem('cw_session');
     linkContainer.classList.add('hidden');
-    showView(authView);
-    phoneStep.classList.remove('hidden');
-    otpStep.classList.add('hidden');
-    phoneInput.value = "";
-    otpInput.value = "";
+    inputs.phone.value = "";
+    inputs.otp.value = "";
+    steps.phone.classList.remove('hidden');
+    steps.otp.classList.add('hidden');
+    showView(views.auth);
 });
 
 auth.settings.appVerificationDisabledForTesting = false; 
 window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 'size': 'invisible' });
 
 document.getElementById('send-otp-btn').addEventListener('click', () => {
-    const phone = phoneInput.value;
-    if (phone.length === 10) {
-        signInWithPhoneNumber(auth, `+91${phone}`, window.recaptchaVerifier)
+    if (inputs.phone.value.length === 10) {
+        signInWithPhoneNumber(auth, `+91${inputs.phone.value}`, window.recaptchaVerifier)
             .then(result => {
                 confirmationResult = result;
-                phoneStep.classList.add('hidden');
-                otpStep.classList.remove('hidden');
-            }).catch(error => alert("Failed to send OTP."));
+                steps.phone.classList.add('hidden');
+                steps.otp.classList.remove('hidden');
+            }).catch(() => alert("Failed to send OTP. Try again."));
     } else { alert("Enter a valid 10-digit number."); }
 });
 
 document.getElementById('verify-otp-btn').addEventListener('click', () => {
-    if (otpInput.value.length >= 4 && confirmationResult) {
-        confirmationResult.confirm(otpInput.value).then(() => createSession())
-        .catch(() => alert("Invalid OTP."));
+    if (inputs.otp.value.length >= 4 && confirmationResult) {
+        confirmationResult.confirm(inputs.otp.value)
+            .then(() => createSession())
+            .catch(() => alert("Invalid OTP."));
     }
 });
 
 document.getElementById('back-btn').addEventListener('click', () => {
-    otpStep.classList.add('hidden');
-    phoneStep.classList.remove('hidden');
+    steps.otp.classList.add('hidden');
+    steps.phone.classList.remove('hidden');
 });
 
+// --- Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
     currentRoom = `room-${Math.random().toString(36).substring(2, 11)}`;
-    meetingLinkInput.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
+    inputs.link.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
     linkContainer.classList.remove('hidden');
 });
 
 document.getElementById('copy-btn').addEventListener('click', () => {
-    meetingLinkInput.select();
-    navigator.clipboard.writeText(meetingLinkInput.value);
-    alert("Link copied!");
+    inputs.link.select();
+    navigator.clipboard.writeText(inputs.link.value);
+    alert("Meeting link copied!");
 });
 
 document.getElementById('join-now-btn').addEventListener('click', () => {
-    showView(meetingView);
+    showView(views.meeting);
     startGroupCall();
 });
-
 
 // --- Dynamic Layout Manager ---
 function updateLayout() {
     const localVideo = document.getElementById('local-video');
     if (!localVideo) return;
     
-    // Count how many remote videos are currently inside the grid
     const remoteVideoCount = videoGrid.querySelectorAll('video').length;
-    
     if (remoteVideoCount > 0) {
-        localVideo.classList.add('pip'); // Shrink me
+        localVideo.classList.add('pip');
     } else {
-        localVideo.classList.remove('pip'); // Full screen me
+        localVideo.classList.remove('pip');
     }
 }
 
-
 // --- Group WebRTC Logic ---
 async function startGroupCall() {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    
-    const localVideo = document.createElement('video');
-    localVideo.id = 'local-video';
-    localVideo.srcObject = localStream;
-    localVideo.autoplay = true;
-    localVideo.muted = true; 
-    localVideo.playsInline = true;
-    
-    // Inject local video into the main container, NOT the grid
-    document.querySelector('.video-container').appendChild(localVideo);
-    updateLayout();
+    try {
+        // Request camera with optimized constraints
+        localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        
+        const localVideo = document.createElement('video');
+        localVideo.id = 'local-video';
+        localVideo.srcObject = localStream;
+        localVideo.autoplay = true;
+        localVideo.muted = true; 
+        localVideo.playsInline = true;
+        document.querySelector('.video-container').appendChild(localVideo);
+        updateLayout();
 
-    const roomRef = doc(db, 'rooms', currentRoom);
-    const participantsRef = collection(roomRef, 'participants');
-    
-    const myInboxRef = collection(roomRef, `inbox_${myUserId}`);
-    onSnapshot(myInboxRef, snapshot => {
-        snapshot.docChanges().forEach(change => {
-            if (change.type === 'added') {
-                processIncomingSignal(change.doc.data());
-            }
+        const roomRef = doc(db, 'rooms', currentRoom);
+        const participantsRef = collection(roomRef, 'participants');
+        
+        // Listen for incoming connection offers
+        onSnapshot(collection(roomRef, `inbox_${myUserId}`), snapshot => {
+            snapshot.docChanges().forEach(change => {
+                if (change.type === 'added') processIncomingSignal(change.doc.data());
+            });
         });
-    });
 
-    const existingUsers = await getDocs(participantsRef);
-    existingUsers.forEach(userDoc => {
-        const targetUserId = userDoc.id;
-        if (targetUserId !== myUserId) {
-            initiateCallToUser(targetUserId);
-        }
-    });
+        // Call everyone already in the room
+        const existingUsers = await getDocs(participantsRef);
+        existingUsers.forEach(userDoc => {
+            if (userDoc.id !== myUserId) initiateCallToUser(userDoc.id);
+        });
 
-    await setDoc(doc(participantsRef, myUserId), { joinedAt: Date.now() });
+        // Announce presence
+        await setDoc(doc(participantsRef, myUserId), { joinedAt: Date.now() });
+        
+    } catch (error) {
+        console.error("Camera error:", error);
+        alert("Could not access camera/microphone.");
+    }
 }
 
 function createPeerConnection(targetUserId) {
@@ -204,18 +224,20 @@ function createPeerConnection(targetUserId) {
 
     pc.ontrack = event => {
         event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-        if (!remoteVideo.srcObject) {
+        if (!document.getElementById(`video-${targetUserId}`)) {
             remoteVideo.srcObject = remoteStream;
             videoGrid.appendChild(remoteVideo);
-            updateLayout(); // Trigger PiP!
+            updateLayout(); 
         }
     };
 
+    // Clean up when someone leaves
     pc.oniceconnectionstatechange = () => {
         if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
-            remoteVideo.remove();
+            const vidToRemove = document.getElementById(`video-${targetUserId}`);
+            if (vidToRemove) vidToRemove.remove();
             delete peerConnections[targetUserId];
-            updateLayout(); // Expand back to full screen if they were the last person
+            updateLayout(); 
         }
     };
 
@@ -231,46 +253,47 @@ async function initiateCallToUser(targetUserId) {
 
 async function processIncomingSignal(data) {
     const { sender, type, sdp, candidate } = data;
+    const pc = peerConnections[sender] || createPeerConnection(sender);
 
-    if (type === 'offer') {
-        const pc = createPeerConnection(sender);
-        await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sendSignal(sender, { type: 'answer', sdp: answer.sdp, sender: myUserId });
-    } 
-    else if (type === 'answer') {
-        const pc = peerConnections[sender];
-        if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-    } 
-    else if (type === 'candidate') {
-        const pc = peerConnections[sender];
-        if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    try {
+        if (type === 'offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            sendSignal(sender, { type: 'answer', sdp: answer.sdp, sender: myUserId });
+        } else if (type === 'answer') {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+        } else if (type === 'candidate') {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+    } catch (error) {
+        console.error("Signal processing error:", error);
     }
 }
 
 async function sendSignal(targetUserId, message) {
-    const targetInbox = collection(db, 'rooms', currentRoom, `inbox_${targetUserId}`);
-    await addDoc(targetInbox, message);
+    await addDoc(collection(db, 'rooms', currentRoom, `inbox_${targetUserId}`), message);
 }
 
 // --- Video Controls ---
 document.getElementById('toggle-mic-btn').addEventListener('click', () => {
     const audioTrack = localStream.getAudioTracks()[0];
     audioTrack.enabled = !audioTrack.enabled;
-    document.getElementById('mic-icon').innerText = audioTrack.enabled ? 'mic' : 'mic_off';
+    const icon = document.getElementById('mic-icon');
+    icon.innerText = audioTrack.enabled ? 'mic' : 'mic_off';
+    icon.parentElement.classList.toggle('danger', !audioTrack.enabled);
 });
 
 document.getElementById('toggle-cam-btn').addEventListener('click', () => {
     const videoTrack = localStream.getVideoTracks()[0];
     videoTrack.enabled = !videoTrack.enabled;
-    document.getElementById('cam-icon').innerText = videoTrack.enabled ? 'videocam' : 'videocam_off';
+    const icon = document.getElementById('cam-icon');
+    icon.innerText = videoTrack.enabled ? 'videocam' : 'videocam_off';
+    icon.parentElement.classList.toggle('danger', !videoTrack.enabled);
 });
 
 document.getElementById('hangup-btn').addEventListener('click', () => {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-    }
+    if (localStream) localStream.getTracks().forEach(track => track.stop());
     Object.values(peerConnections).forEach(pc => pc.close());
     window.location.href = window.location.pathname;
 });
