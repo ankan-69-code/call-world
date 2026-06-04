@@ -302,3 +302,32 @@ video {
     color: white;
     box-shadow: 0 8px 20px rgba(239, 68, 68, 0.5);
 }
+/* --- WebRTC Group Video Grid --- */
+.video-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+    height: 100%;
+    padding: 15px;
+    padding-bottom: 100px; /* Space for the controls */
+    overflow-y: auto;
+}
+
+.video-grid video {
+    flex: 1 1 40%; /* Automatically scales to fit multiple people */
+    min-width: 250px;
+    max-width: 500px;
+    aspect-ratio: 16/9;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    background-color: #222;
+    transition: all 0.3s ease;
+}
+
+#local-video {
+    transform: scaleX(-1); /* Keep your own camera mirrored */
+    border: 2px solid var(--accent-color); /* Highlight your own box */
+}
