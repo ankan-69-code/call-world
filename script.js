@@ -50,12 +50,10 @@ const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
 if (roomParam) {
-    // Guest joining via link
     currentRoom = roomParam;
     showView(meetingView);
     startGuestCall(); 
 } else {
-    // Host visiting the main page
     checkSession();
 }
 
@@ -143,7 +141,6 @@ document.getElementById('back-btn').addEventListener('click', () => {
 
 // --- Dashboard Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
-    // Generate a random room string
     const randomStr = Math.random().toString(36).substring(2, 11);
     currentRoom = `room-${randomStr}`;
     
@@ -173,6 +170,10 @@ function registerPeerConnectionListeners() {
         event.streams[0].getTracks().forEach(track => {
             remoteStream.addTrack(track);
         });
+        
+        // UI TRIGGER: When their video arrives, show it and shrink ours!
+        remoteVideo.classList.remove('hidden-video');
+        localVideo.classList.add('pip');
     });
 }
 
@@ -203,21 +204,23 @@ async function createRoom(roomId) {
     };
     await setDoc(roomRef, roomWithOffer);
 
+    // Wait for the guest to reply with an Answer
     onSnapshot(roomRef, async snapshot => {
         const data = snapshot.data();
         if (!peerConnection.currentRemoteDescription && data && data.answer) {
             const rtcSessionDescription = new RTCSessionDescription(data.answer);
             await peerConnection.setRemoteDescription(rtcSessionDescription);
-        }
-    });
 
-    onSnapshot(collection(roomRef, 'calleeCandidates'), snapshot => {
-        snapshot.docChanges().forEach(async change => {
-            if (change.type === 'added') {
-                let data = change.doc.data();
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data));
-            }
-        });
+            // FIX: Only gather their ICE candidates AFTER the handshake is done
+            onSnapshot(collection(roomRef, 'calleeCandidates'), snapshot => {
+                snapshot.docChanges().forEach(async change => {
+                    if (change.type === 'added') {
+                        let data = change.doc.data();
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(data));
+                    }
+                });
+            });
+        }
     });
 }
 
@@ -258,6 +261,7 @@ async function joinRoomById(roomId) {
     };
     await setDoc(roomRef, roomWithAnswer, { merge: true });
 
+    // FIX: Only gather host ICE candidates AFTER we set the remote description
     onSnapshot(collection(roomRef, 'callerCandidates'), snapshot => {
         snapshot.docChanges().forEach(async change => {
             if (change.type === 'added') {
