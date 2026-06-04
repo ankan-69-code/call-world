@@ -347,13 +347,28 @@ if(pipBtn) {
             return alert("No one else is in the call yet!");
         }
 
+        try // 1. Manual Click (Always works, bypasses browser security blocks)
+if(pipBtn) {
+    pipBtn.addEventListener('click', async () => {
+        const remoteVideo = videoGrid.querySelector('video');
+        if (!remoteVideo) return alert("No one else is in the call yet!");
+
         try {
+            // DEFENSIVE CHECK: If the phone doesn't have PiP, just alert them.
+            if (!document.pictureInPictureEnabled) {
+                return alert("Your phone's browser does not support Picture-in-Picture.");
+            }
+
             if (document.pictureInPictureElement) {
                 await document.exitPictureInPicture();
             } else {
                 await remoteVideo.requestPictureInPicture();
             }
         } catch (error) {
+            console.error("PiP failed:", error);
+        }
+    });
+}catch (error) {
             console.error("PiP failed:", error);
         }
     });
