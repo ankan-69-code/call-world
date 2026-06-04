@@ -33,6 +33,7 @@ const inputs = {
     link: document.getElementById('meeting-link')
 };
 const linkContainer = document.getElementById('link-container');
+const joinNowBtn = document.getElementById('join-now-btn');
 const videoGrid = document.getElementById('video-grid');
 
 let currentRoom = "";
@@ -43,11 +44,15 @@ const myUserId = Math.random().toString(36).substring(2, 12);
 const peerConnections = {}; 
 let localStream = null;
 
+// MOBILE NETWORK FIX: Added public STUN/TURN fallback addresses
 const configuration = {
     iceServers: [
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-    ]
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun.services.mozilla.com' }
+    ],
+    iceCandidatePoolSize: 10
 };
 
 // --- MESH OPTIMIZATION & MOBILE CAMERA FIX ---
@@ -57,10 +62,10 @@ const mediaConstraints = {
         noiseSuppression: true
     },
     video: { 
-        facingMode: "user", // Forces phone selfie cameras dynamically
+        facingMode: "user", 
         width: { ideal: 480, max: 640 }, 
         height: { ideal: 360, max: 480 }, 
-        frameRate: { ideal: 15, max: 24 } 
+        frameRate: { ideal: 15, max: 20 } 
     }
 };
 
@@ -100,6 +105,7 @@ function createSession() {
 document.getElementById('logout-btn').addEventListener('click', () => {
     localStorage.removeItem('cw_session');
     linkContainer.classList.add('hidden');
+    joinNowBtn.classList.add('hidden');
     inputs.phone.value = "";
     inputs.otp.value = "";
     steps.phone.classList.remove('hidden');
@@ -107,8 +113,17 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     showView(views.auth);
 });
 
+// ==========================================
+//   MOBILE RECAPTCHA FIX (VISIBLE MODE)
+// ==========================================
 auth.settings.appVerificationDisabledForTesting = false; 
-window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 'size': 'invisible' });
+
+window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 
+    'size': 'normal',
+    'callback': (response) => {
+        console.log("reCAPTCHA verified successfully.");
+    }
+});
 
 document.getElementById('send-otp-btn').addEventListener('click', () => {
     if (inputs.phone.value.length === 10) {
@@ -117,7 +132,14 @@ document.getElementById('send-otp-btn').addEventListener('click', () => {
                 confirmationResult = result;
                 steps.phone.classList.add('hidden');
                 steps.otp.classList.remove('hidden');
-            }).catch(() => alert("Failed to send OTP. Try again."));
+            }).catch((err) => {
+                console.error("SMS Sending Error:", err);
+                alert("Failed to send OTP. Please complete the reCAPTCHA.");
+                // Reset recaptcha if it fails so the user can try again
+                window.recaptchaVerifier.render().then(function(widgetId) {
+                    grecaptcha.reset(widgetId);
+                });
+            });
     } else { alert("Enter a valid 10-digit number."); }
 });
 
@@ -139,6 +161,7 @@ document.getElementById('generate-link-btn').addEventListener('click', () => {
     currentRoom = `room-${Math.random().toString(36).substring(2, 11)}`;
     inputs.link.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
     linkContainer.classList.remove('hidden');
+    joinNowBtn.classList.remove('hidden'); // Reveal join button
 });
 
 document.getElementById('copy-btn').addEventListener('click', () => {
@@ -147,7 +170,7 @@ document.getElementById('copy-btn').addEventListener('click', () => {
     alert("Meeting link copied!");
 });
 
-document.getElementById('join-now-btn').addEventListener('click', () => {
+joinNowBtn.addEventListener('click', () => {
     showView(views.meeting);
     startGroupCall();
 });
@@ -168,9 +191,8 @@ function updateLayout() {
 // --- Group WebRTC Logic ---
 async function startGroupCall() {
     try {
-        // DEFENSIVE CHECK: Does this phone support modern WebRTC video?
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error("Browser too old for WebRTC video.");
+            throw new Error("Browser infrastructure too legacy for video streaming.");
         }
 
         localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
@@ -181,7 +203,6 @@ async function startGroupCall() {
         localVideo.autoplay = true;
         localVideo.muted = true; 
         
-        // LEGACY PLAYBACK FIX: Stops mobile Safari from breaking to full screen
         localVideo.setAttribute('playsinline', 'true');
         localVideo.playsInline = true;
         
@@ -206,7 +227,7 @@ async function startGroupCall() {
         
     } catch (error) {
         console.error("Camera error:", error);
-        alert("Could not access camera/microphone.");
+        alert("Could not access your camera or microphone. Please check system permissions.");
     }
 }
 
@@ -226,7 +247,6 @@ function createPeerConnection(targetUserId) {
     const remoteVideo = document.createElement('video');
     remoteVideo.id = `video-${targetUserId}`;
     remoteVideo.autoplay = true;
-    
     remoteVideo.setAttribute('playsinline', 'true');
     remoteVideo.playsInline = true;
 
@@ -311,7 +331,6 @@ document.getElementById('toggle-cam-btn').addEventListener('click', () => {
     icon.parentElement.classList.toggle('danger', !videoTrack.enabled);
 });
 
-// Hangup and Tab-Close Listeners
 document.getElementById('hangup-btn').addEventListener('click', () => {
     leaveCallGracefully();
 });
@@ -334,9 +353,8 @@ function leaveCallGracefully() {
 }
 
 // ==========================================
-//   OS-LEVEL PICTURE-IN-PICTURE (FIXED CLEAN)
+//   OS-LEVEL PICTURE-IN-PICTURE
 // ==========================================
-
 const pipBtn = document.getElementById('pip-btn');
 
 if (pipBtn) {
@@ -346,7 +364,7 @@ if (pipBtn) {
 
         try {
             if (!document.pictureInPictureEnabled) {
-                return alert("Your phone's browser does not support Picture-in-Picture.");
+                return alert("Your device does not support Picture-in-Picture mode.");
             }
 
             if (document.pictureInPictureElement) {
@@ -370,7 +388,7 @@ document.addEventListener("visibilitychange", async () => {
                 await remoteVideo.requestPictureInPicture();
             }
         } catch (error) {
-            console.warn("Browser blocked auto-PiP. User must use manual action.", error);
+            console.warn("PiP auto-activation bypassed by browser security policy.", error);
         }
     } else {
         try {
