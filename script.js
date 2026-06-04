@@ -3,7 +3,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getFirestore, collection, doc, setDoc, getDocs, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-// Your exact Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyAv4YOIRpkgDZCJznrmCBF0YQhQJtCAY88",
   authDomain: "call-world-bdbe6.firebaseapp.com",
@@ -14,12 +13,10 @@ const firebaseConfig = {
   measurementId: "G-YTXB18QFJ6"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- DOM Elements ---
 const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
 const meetingView = document.getElementById('meeting-view');
@@ -34,9 +31,8 @@ const videoGrid = document.getElementById('video-grid');
 let currentRoom = "";
 let confirmationResult = null; 
 
-// --- WebRTC Group State ---
-const myUserId = Math.random().toString(36).substring(2, 12); // Unique ID for this tab
-const peerConnections = {}; // Stores a connection for EACH person
+const myUserId = Math.random().toString(36).substring(2, 12); 
+const peerConnections = {}; 
 let localStream = null;
 
 const configuration = {
@@ -45,7 +41,6 @@ const configuration = {
     ]
 };
 
-// --- Routing & Initialization ---
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
@@ -64,7 +59,6 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-// --- Session Management ---
 function checkSession() {
     const sessionExpiry = localStorage.getItem('cw_session');
     if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
@@ -91,7 +85,6 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     otpInput.value = "";
 });
 
-// --- Firebase Auth ---
 auth.settings.appVerificationDisabledForTesting = false; 
 window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 'size': 'invisible' });
 
@@ -119,7 +112,6 @@ document.getElementById('back-btn').addEventListener('click', () => {
     phoneStep.classList.remove('hidden');
 });
 
-// --- Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
     currentRoom = `room-${Math.random().toString(36).substring(2, 11)}`;
     meetingLinkInput.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
@@ -137,24 +129,41 @@ document.getElementById('join-now-btn').addEventListener('click', () => {
     startGroupCall();
 });
 
-// --- Group WebRTC Logic ---
 
+// --- Dynamic Layout Manager ---
+function updateLayout() {
+    const localVideo = document.getElementById('local-video');
+    if (!localVideo) return;
+    
+    // Count how many remote videos are currently inside the grid
+    const remoteVideoCount = videoGrid.querySelectorAll('video').length;
+    
+    if (remoteVideoCount > 0) {
+        localVideo.classList.add('pip'); // Shrink me
+    } else {
+        localVideo.classList.remove('pip'); // Full screen me
+    }
+}
+
+
+// --- Group WebRTC Logic ---
 async function startGroupCall() {
-    // 1. Turn on the camera and put it in the grid
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     
     const localVideo = document.createElement('video');
     localVideo.id = 'local-video';
     localVideo.srcObject = localStream;
     localVideo.autoplay = true;
-    localVideo.muted = true; // Don't hear yourself
+    localVideo.muted = true; 
     localVideo.playsInline = true;
-    videoGrid.appendChild(localVideo);
+    
+    // Inject local video into the main container, NOT the grid
+    document.querySelector('.video-container').appendChild(localVideo);
+    updateLayout();
 
     const roomRef = doc(db, 'rooms', currentRoom);
     const participantsRef = collection(roomRef, 'participants');
     
-    // 2. Open my personal "inbox" to receive offers from other people
     const myInboxRef = collection(roomRef, `inbox_${myUserId}`);
     onSnapshot(myInboxRef, snapshot => {
         snapshot.docChanges().forEach(change => {
@@ -164,7 +173,6 @@ async function startGroupCall() {
         });
     });
 
-    // 3. Look at who is already in the room, and call each of them
     const existingUsers = await getDocs(participantsRef);
     existingUsers.forEach(userDoc => {
         const targetUserId = userDoc.id;
@@ -173,26 +181,21 @@ async function startGroupCall() {
         }
     });
 
-    // 4. Announce my arrival so future people know I'm here
     await setDoc(doc(participantsRef, myUserId), { joinedAt: Date.now() });
 }
 
-// Builds a video tunnel to one specific person
 function createPeerConnection(targetUserId) {
     const pc = new RTCPeerConnection(configuration);
-    peerConnections[targetUserId] = pc; // Save it to the dictionary
+    peerConnections[targetUserId] = pc; 
 
-    // Shove my video into the tunnel
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    // When they find a network route to me, send it to their inbox
     pc.onicecandidate = event => {
         if (event.candidate) {
             sendSignal(targetUserId, { type: 'candidate', candidate: event.candidate.toJSON(), sender: myUserId });
         }
     };
 
-    // When their video pops out of the tunnel, put it on screen
     const remoteStream = new MediaStream();
     const remoteVideo = document.createElement('video');
     remoteVideo.id = `video-${targetUserId}`;
@@ -204,35 +207,32 @@ function createPeerConnection(targetUserId) {
         if (!remoteVideo.srcObject) {
             remoteVideo.srcObject = remoteStream;
             videoGrid.appendChild(remoteVideo);
+            updateLayout(); // Trigger PiP!
         }
     };
 
-    // If they leave, remove their video
     pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
             remoteVideo.remove();
             delete peerConnections[targetUserId];
+            updateLayout(); // Expand back to full screen if they were the last person
         }
     };
 
     return pc;
 }
 
-// The action of calling an existing user
 async function initiateCallToUser(targetUserId) {
     const pc = createPeerConnection(targetUserId);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    
     sendSignal(targetUserId, { type: 'offer', sdp: offer.sdp, sender: myUserId });
 }
 
-// Processing the mail in our inbox
 async function processIncomingSignal(data) {
     const { sender, type, sdp, candidate } = data;
 
     if (type === 'offer') {
-        // Someone new joined and is calling us! Answer them.
         const pc = createPeerConnection(sender);
         await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
         const answer = await pc.createAnswer();
@@ -240,18 +240,15 @@ async function processIncomingSignal(data) {
         sendSignal(sender, { type: 'answer', sdp: answer.sdp, sender: myUserId });
     } 
     else if (type === 'answer') {
-        // They replied to our call
         const pc = peerConnections[sender];
         if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
     } 
     else if (type === 'candidate') {
-        // Network routing data
         const pc = peerConnections[sender];
         if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
     }
 }
 
-// Utility to send mail to someone else's inbox
 async function sendSignal(targetUserId, message) {
     const targetInbox = collection(db, 'rooms', currentRoom, `inbox_${targetUserId}`);
     await addDoc(targetInbox, message);
@@ -271,12 +268,9 @@ document.getElementById('toggle-cam-btn').addEventListener('click', () => {
 });
 
 document.getElementById('hangup-btn').addEventListener('click', () => {
-    // Turn off camera
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
     }
-    // Sever all connections to all friends
     Object.values(peerConnections).forEach(pc => pc.close());
-    
     window.location.href = window.location.pathname;
 });
