@@ -1,6 +1,6 @@
 // Import Firebase SDKs
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getFirestore, collection, doc, setDoc, getDocs, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -32,96 +32,78 @@ const joinNowBtn = document.getElementById('join-now-btn');
 const videoGrid = document.getElementById('video-grid');
 
 let currentRoom = "";
-
-// --- WebRTC Group State ---
 const myUserId = Math.random().toString(36).substring(2, 12); 
 const peerConnections = {}; 
 let localStream = null;
 
-// MOBILE NETWORK FIX: Public STUN/TURN fallback endpoints
 const configuration = {
     iceServers: [
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun.services.mozilla.com' }
+        { urls: 'stun:stun.l.google.com:19302' }
     ],
     iceCandidatePoolSize: 10
 };
 
-// --- MESH OPTIMIZATION & MOBILE CAMERA FIX ---
 const mediaConstraints = {
-    audio: {
-        echoCancellation: true,
-        noiseSuppression: true
-    },
-    video: { 
-        facingMode: "user", 
-        width: { ideal: 480, max: 640 }, 
-        height: { ideal: 360, max: 480 }, 
-        frameRate: { ideal: 15, max: 20 } 
-    }
+    audio: { echoCancellation: true, noiseSuppression: true },
+    video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15 } }
 };
 
-// --- Routing & Initialization ---
-const urlParams = new URLSearchParams(window.location.search);
-const roomParam = urlParams.get('room');
+// ==========================================
+//   AUTHENTICATION & ROUTING (NATIVE)
+// ==========================================
 
-if (roomParam) {
-    currentRoom = roomParam;
-    showView(views.meeting);
-    startGroupCall(); 
-} else {
-    checkSession();
-}
+// Firebase automatically checks if the user is already logged in
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        // 1. User is logged in -> Check if they clicked a meeting link
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomParam = urlParams.get('room');
+
+        if (roomParam) {
+            currentRoom = roomParam;
+            showView(views.meeting);
+            startGroupCall();
+        } else {
+            showView(views.dashboard);
+        }
+    } else {
+        // 2. User is logged out -> Show Login Screen
+        showView(views.auth);
+    }
+});
+
+// Manual Login Trigger
+document.getElementById('google-signin-btn').addEventListener('click', () => {
+    signInWithPopup(auth, provider).catch((err) => {
+        console.error("Auth Error:", err);
+        alert("Sign-In failed. Make sure you enabled Google Auth in Firebase Console.");
+    });
+});
+
+// Logout Logic
+document.getElementById('logout-btn').addEventListener('click', () => {
+    signOut(auth).then(() => {
+        // Reset URL and refresh to show login screen
+        window.location.href = window.location.origin + window.location.pathname;
+    });
+});
+
+// ==========================================
+//   UI & MEETING LOGIC
+// ==========================================
 
 function showView(activeView) {
     Object.values(views).forEach(v => v.classList.add('hidden'));
     activeView.classList.remove('hidden');
 }
 
-// --- Auth & Session Management ---
-function checkSession() {
-    const sessionExpiry = localStorage.getItem('cw_session');
-    if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
-        showView(views.dashboard);
-    } else {
-        localStorage.removeItem('cw_session');
-        showView(views.auth);
-    }
-}
-
-function createSession() {
-    localStorage.setItem('cw_session', Date.now() + (7 * 24 * 60 * 60 * 1000));
-    showView(views.dashboard);
-}
-
-// Google Sign-In Execution Integration
-document.getElementById('google-signin-btn').addEventListener('click', () => {
-    signInWithPopup(auth, provider)
-        .then(() => {
-            createSession();
-        }).catch((err) => {
-            console.error("Google Authentication Failure:", err);
-            alert("Sign-In failed. Please try again.");
-        });
-});
-
-document.getElementById('logout-btn').addEventListener('click', () => {
-    signOut(auth).then(() => {
-        localStorage.removeItem('cw_session');
-        linkContainer.classList.add('hidden');
-        joinNowBtn.classList.add('hidden');
-        showView(views.auth);
-    });
-});
-
-// --- Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
     currentRoom = `room-${Math.random().toString(36).substring(2, 11)}`;
     inputs.link.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
     linkContainer.classList.remove('hidden');
-    joinNowBtn.classList.remove('hidden'); 
+    joinNowBtn.classList.remove('hidden');
 });
 
 document.getElementById('copy-btn').addEventListener('click', () => {
@@ -135,99 +117,81 @@ joinNowBtn.addEventListener('click', () => {
     startGroupCall();
 });
 
-// --- Dynamic Layout Manager ---
 function updateLayout() {
     const localVideo = document.getElementById('local-video');
     if (!localVideo) return;
-    
     const remoteVideoCount = videoGrid.querySelectorAll('video').length;
-    if (remoteVideoCount > 0) {
-        localVideo.classList.add('pip');
-    } else {
-        localVideo.classList.remove('pip');
-    }
+    localVideo.classList.toggle('pip', remoteVideoCount > 0);
 }
 
-// --- Group WebRTC Logic ---
 async function startGroupCall() {
     try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error("Browser infrastructure too legacy for video streaming.");
+            throw new Error("Hardware/Browser mismatch for video.");
         }
 
         localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-        
         const localVideo = document.createElement('video');
         localVideo.id = 'local-video';
         localVideo.srcObject = localStream;
         localVideo.autoplay = true;
-        localVideo.muted = true; 
-        
-        localVideo.setAttribute('playsinline', 'true');
+        localVideo.muted = true;
         localVideo.playsInline = true;
-        
         document.querySelector('.video-container').appendChild(localVideo);
         updateLayout();
 
         const roomRef = doc(db, 'rooms', currentRoom);
-        const participantsRef = collection(roomRef, 'participants');
         
+        // Listen for signals
         onSnapshot(collection(roomRef, `inbox_${myUserId}`), snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === 'added') processIncomingSignal(change.doc.data());
             });
         });
 
-        const existingUsers = await getDocs(participantsRef);
+        // Call existing participants
+        const existingUsers = await getDocs(collection(roomRef, 'participants'));
         existingUsers.forEach(userDoc => {
             if (userDoc.id !== myUserId) initiateCallToUser(userDoc.id);
         });
 
-        await setDoc(doc(participantsRef, myUserId), { joinedAt: Date.now() });
-        
+        // Add self to participants
+        await setDoc(doc(collection(roomRef, 'participants'), myUserId), { joinedAt: Date.now() });
+
     } catch (error) {
         console.error("Camera error:", error);
-        alert("Could not access your camera or microphone. Please check system permissions.");
+        alert("Camera access denied.");
     }
 }
 
 function createPeerConnection(targetUserId) {
     const pc = new RTCPeerConnection(configuration);
-    peerConnections[targetUserId] = pc; 
-
+    peerConnections[targetUserId] = pc;
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    pc.onicecandidate = event => {
-        if (event.candidate) {
-            sendSignal(targetUserId, { type: 'candidate', candidate: event.candidate.toJSON(), sender: myUserId });
-        }
+    pc.onicecandidate = e => {
+        if (e.candidate) sendSignal(targetUserId, { type: 'candidate', candidate: e.candidate.toJSON(), sender: myUserId });
     };
 
-    const remoteStream = new MediaStream();
-    const remoteVideo = document.createElement('video');
-    remoteVideo.id = `video-${targetUserId}`;
-    remoteVideo.autoplay = true;
-    remoteVideo.setAttribute('playsinline', 'true');
-    remoteVideo.playsInline = true;
-
-    pc.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+    pc.ontrack = e => {
         if (!document.getElementById(`video-${targetUserId}`)) {
-            remoteVideo.srcObject = remoteStream;
+            const remoteVideo = document.createElement('video');
+            remoteVideo.id = `video-${targetUserId}`;
+            remoteVideo.srcObject = e.streams[0];
+            remoteVideo.autoplay = true;
+            remoteVideo.playsInline = true;
             videoGrid.appendChild(remoteVideo);
-            updateLayout(); 
+            updateLayout();
         }
     };
 
     pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
-            const vidToRemove = document.getElementById(`video-${targetUserId}`);
-            if (vidToRemove) vidToRemove.remove();
+        if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) {
+            document.getElementById(`video-${targetUserId}`)?.remove();
             delete peerConnections[targetUserId];
-            updateLayout(); 
+            updateLayout();
         }
     };
-
     return pc;
 }
 
@@ -240,33 +204,23 @@ async function initiateCallToUser(targetUserId) {
 
 async function processIncomingSignal(data) {
     const { sender, type, sdp, candidate } = data;
-    
     if (type === 'bye') {
-        const vidToRemove = document.getElementById(`video-${sender}`);
-        if (vidToRemove) vidToRemove.remove();
-        if (peerConnections[sender]) {
-            peerConnections[sender].close();
-            delete peerConnections[sender];
-        }
+        document.getElementById(`video-${sender}`)?.remove();
+        peerConnections[sender]?.close();
+        delete peerConnections[sender];
         updateLayout();
         return;
     }
-
     const pc = peerConnections[sender] || createPeerConnection(sender);
-
-    try {
-        if (type === 'offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            sendSignal(sender, { type: 'answer', sdp: answer.sdp, sender: myUserId });
-        } else if (type === 'answer') {
-            await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-        } else if (type === 'candidate') {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-    } catch (error) {
-        console.error("Signal processing error:", error);
+    if (type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal(sender, { type: 'answer', sdp: answer.sdp, sender: myUserId });
+    } else if (type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+    } else if (type === 'candidate') {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
     }
 }
 
@@ -276,87 +230,36 @@ async function sendSignal(targetUserId, message) {
 
 // --- Video Controls ---
 document.getElementById('toggle-mic-btn').addEventListener('click', () => {
-    const audioTrack = localStream.getAudioTracks()[0];
-    audioTrack.enabled = !audioTrack.enabled;
-    const icon = document.getElementById('mic-icon');
-    icon.innerText = audioTrack.enabled ? 'mic' : 'mic_off';
-    icon.parentElement.classList.toggle('danger', !audioTrack.enabled);
+    const track = localStream.getAudioTracks()[0];
+    track.enabled = !track.enabled;
+    document.getElementById('mic-icon').innerText = track.enabled ? 'mic' : 'mic_off';
 });
 
 document.getElementById('toggle-cam-btn').addEventListener('click', () => {
-    const videoTrack = localStream.getVideoTracks()[0];
-    videoTrack.enabled = !videoTrack.enabled;
-    const icon = document.getElementById('cam-icon');
-    icon.innerText = videoTrack.enabled ? 'videocam' : 'videocam_off';
-    icon.parentElement.classList.toggle('danger', !videoTrack.enabled);
+    const track = localStream.getVideoTracks()[0];
+    track.enabled = !track.enabled;
+    document.getElementById('cam-icon').innerText = track.enabled ? 'videocam' : 'videocam_off';
 });
 
-document.getElementById('hangup-btn').addEventListener('click', () => {
-    leaveCallGracefully();
-});
-
-window.addEventListener('beforeunload', () => {
-    leaveCallGracefully();
-});
+document.getElementById('hangup-btn').addEventListener('click', () => leaveCallGracefully());
+window.addEventListener('beforeunload', () => leaveCallGracefully());
 
 function leaveCallGracefully() {
-    Object.keys(peerConnections).forEach(targetUserId => {
-        sendSignal(targetUserId, { type: 'bye', sender: myUserId });
-    });
-
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-    }
-    
+    Object.keys(peerConnections).forEach(id => sendSignal(id, { type: 'bye', sender: myUserId }));
+    localStream?.getTracks().forEach(t => t.stop());
     Object.values(peerConnections).forEach(pc => pc.close());
-    window.location.href = window.location.pathname;
+    window.location.href = window.location.origin + window.location.pathname;
 }
 
-// ==========================================
-//   OS-LEVEL PICTURE-IN-PICTURE
-// ==========================================
+// OS-Level PiP
 const pipBtn = document.getElementById('pip-btn');
-
 if (pipBtn) {
     pipBtn.addEventListener('click', async () => {
         const remoteVideo = videoGrid.querySelector('video');
-        if (!remoteVideo) return alert("No one else is in the call yet!");
-
+        if (!remoteVideo) return alert("Waiting for others to join...");
         try {
-            if (!document.pictureInPictureEnabled) {
-                return alert("Your device does not support Picture-in-Picture mode.");
-            }
-
-            if (document.pictureInPictureElement) {
-                await document.exitPictureInPicture();
-            } else {
-                await remoteVideo.requestPictureInPicture();
-            }
-        } catch (error) {
-            console.error("PiP failed:", error);
-        }
+            if (document.pictureInPictureElement) await document.exitPictureInPicture();
+            else await remoteVideo.requestPictureInPicture();
+        } catch (e) { console.error(e); }
     });
 }
-
-document.addEventListener("visibilitychange", async () => {
-    const remoteVideo = videoGrid.querySelector('video');
-    if (!remoteVideo || !document.pictureInPictureEnabled) return;
-
-    if (document.hidden) {
-        try {
-            if (!document.pictureInPictureElement) {
-                await remoteVideo.requestPictureInPicture();
-            }
-        } catch (error) {
-            console.warn("PiP auto-activation bypassed by browser security policy.", error);
-        }
-    } else {
-        try {
-            if (document.pictureInPictureElement) {
-                await document.exitPictureInPicture();
-            }
-        } catch (error) {
-            console.error("Could not exit PiP:", error);
-        }
-    }
-});
