@@ -167,6 +167,12 @@ function updateLayout() {
 // --- Group WebRTC Logic ---
 async function startGroupCall() {
     try {
+        // DEFENSIVE CHECK: Does this phone even support modern cameras?
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Browser too old for WebRTC video.");
+        }
+
+        // Request camera with optimized constraints
         localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         
         const localVideo = document.createElement('video');
@@ -174,10 +180,15 @@ async function startGroupCall() {
         localVideo.srcObject = localStream;
         localVideo.autoplay = true;
         localVideo.muted = true; 
+        
+        // OLD IPHONE FIX: Forces old Safari to play video inline instead of full screen
+        localVideo.setAttribute('playsinline', 'true'); 
         localVideo.playsInline = true;
+        
         document.querySelector('.video-container').appendChild(localVideo);
         updateLayout();
 
+        // ... (Keep the rest of your Firebase database logic exactly the same below this) ...
         const roomRef = doc(db, 'rooms', currentRoom);
         const participantsRef = collection(roomRef, 'participants');
         
