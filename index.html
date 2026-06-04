@@ -2,66 +2,72 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Call World</title>
+    <!-- Mutes the harmless 404 favicon error -->
+    <link rel="icon" href="data:,"> 
     <link rel="stylesheet" href="style.css">
+    <!-- Google Material Icons -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 </head>
 <body>
-
+    <!-- 1. Auth View -->
     <div id="auth-view" class="view-container">
-        <div class="card auth-card">
+        <div class="card">
             <h1 class="brand">Call World</h1>
-            <p class="subtitle">Log in to host a meeting</p>
+            <p class="subtitle">Secure, peer-to-peer video calls.</p>
             
+            <!-- Phone Step -->
             <div id="phone-step">
                 <div class="input-group">
                     <span class="country-code">+91</span>
                     <input type="tel" id="phone-input" placeholder="Enter mobile number" maxlength="10">
                 </div>
-                <div id="recaptcha-container"></div>
+                
+                <!-- VISIBLE RECAPTCHA FOR STRICT MOBILE BROWSERS -->
+                <div id="recaptcha-container" style="margin-bottom: 20px; display: flex; justify-content: center;"></div>
+                
                 <button id="send-otp-btn" class="primary-btn">Send OTP</button>
             </div>
 
+            <!-- OTP Step -->
             <div id="otp-step" class="hidden">
-                <input type="text" id="otp-input" placeholder="Enter 6-digit OTP" maxlength="6">
-                <button id="verify-otp-btn" class="primary-btn">Verify & Log In</button>
-                <button id="back-btn" class="text-btn">Back</button>
+                <div class="input-group">
+                    <input type="text" id="otp-input" placeholder="Enter 6-digit OTP" maxlength="6">
+                </div>
+                <button id="verify-otp-btn" class="primary-btn">Verify & Login</button>
+                <button id="back-btn" class="text-btn">Back to phone</button>
             </div>
         </div>
     </div>
 
+    <!-- 2. Dashboard View -->
     <div id="dashboard-view" class="view-container hidden">
-        <header class="top-bar">
-            <h1 class="brand">Call World</h1>
-            <button id="logout-btn" class="text-btn">Log out</button>
-        </header>
-        <main class="dashboard-content">
-            <div class="action-card">
-                <h2>Ready to connect?</h2>
-                <p>Generate a unique link and share it with others to start a group chat.</p>
-                <button id="generate-link-btn" class="primary-btn with-icon">
-                    <span class="material-symbols-outlined">video_call</span>
-                    New Meeting
-                </button>
-                
-                <div id="link-container" class="hidden">
-                    <p class="link-label">Share this link with others:</p>
-                    <div class="link-box">
-                        <input type="text" id="meeting-link" readonly>
-                        <button id="copy-btn"><span class="material-symbols-outlined">content_copy</span></button>
-                    </div>
-                    <button id="join-now-btn" class="secondary-btn">Join Now</button>
-                </div>
+        <div class="top-bar">
+            <h2 class="brand">Call World</h2>
+            <button id="logout-btn" class="secondary-btn" style="width: auto; margin-top: 0; padding: 8px 16px;">Logout</button>
+        </div>
+        <div class="action-card">
+            <h3>Start a Meeting</h3>
+            <button id="generate-link-btn" class="primary-btn" style="margin-top: 20px;">Create New Link</button>
+            
+            <div id="link-container" class="link-box hidden">
+                <input type="text" id="meeting-link" readonly>
+                <button id="copy-btn"><span class="material-symbols-outlined">content_copy</span></button>
             </div>
-        </main>
+            
+            <!-- The Join button is revealed when a link is generated -->
+            <button id="join-now-btn" class="primary-btn hidden" style="margin-top: 15px;">Join Meeting Now</button>
+        </div>
     </div>
 
-<div id="meeting-view" class="view-container hidden">
+    <!-- 3. Meeting View -->
+    <div id="meeting-view" class="view-container hidden">
         <div class="video-container">
             <div id="video-grid" class="video-grid"></div>
             
-           <div class="meeting-controls">
+            <!-- Floating Glass Controls -->
+            <div class="meeting-controls">
                 <button id="toggle-mic-btn" class="icon-btn"><span class="material-symbols-outlined" id="mic-icon">mic</span></button>
                 <button id="toggle-cam-btn" class="icon-btn"><span class="material-symbols-outlined" id="cam-icon">videocam</span></button>
                 <button id="pip-btn" class="icon-btn"><span class="material-symbols-outlined">picture_in_picture_alt</span></button>
@@ -69,8 +75,10 @@
             </div>
         </div>
     </div>
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js"></script>
-    
-    <script type="module" src="script.js?v=legacyfix"></script>
+
+    <!-- WebRTC Legacy Adapter for older mobile phones -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js"></script>
+    <!-- Custom script with version bump to bypass mobile cache -->
+    <script type="module" src="script.js?v=visible-recaptcha"></script>
 </body>
 </html>
