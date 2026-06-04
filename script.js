@@ -1,7 +1,7 @@
 // Import Firebase SDKs
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, getDoc, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, getDocs, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 // Your exact Firebase Config
 const firebaseConfig = {
@@ -29,21 +29,21 @@ const phoneInput = document.getElementById('phone-input');
 const otpInput = document.getElementById('otp-input');
 const linkContainer = document.getElementById('link-container');
 const meetingLinkInput = document.getElementById('meeting-link');
+const videoGrid = document.getElementById('video-grid');
 
 let currentRoom = "";
 let confirmationResult = null; 
 
-// --- WebRTC State ---
+// --- WebRTC Group State ---
+const myUserId = Math.random().toString(36).substring(2, 12); // Unique ID for this tab
+const peerConnections = {}; // Stores a connection for EACH person
+let localStream = null;
+
 const configuration = {
     iceServers: [
         { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
     ]
 };
-const peerConnection = {};
-let localStream = null;
-let remoteStream = null;
-const localVideo = document.getElementById('local-video');
-const remoteVideo = document.getElementById('remote-video');
 
 // --- Routing & Initialization ---
 const urlParams = new URLSearchParams(window.location.search);
@@ -52,7 +52,7 @@ const roomParam = urlParams.get('room');
 if (roomParam) {
     currentRoom = roomParam;
     showView(meetingView);
-    startGuestCall(); 
+    startGroupCall(); 
 } else {
     checkSession();
 }
@@ -64,7 +64,7 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-// --- Session Management (7 Days) ---
+// --- Session Management ---
 function checkSession() {
     const sessionExpiry = localStorage.getItem('cw_session');
     if (sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
@@ -91,46 +91,26 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     otpInput.value = "";
 });
 
-// --- Firebase Phone Authentication ---
+// --- Firebase Auth ---
 auth.settings.appVerificationDisabledForTesting = false; 
-window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-    'size': 'invisible'
-});
+window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 'size': 'invisible' });
 
 document.getElementById('send-otp-btn').addEventListener('click', () => {
     const phone = phoneInput.value;
-    const formattedPhoneNumber = `+91${phone}`; 
-
     if (phone.length === 10) {
-        const appVerifier = window.recaptchaVerifier;
-        signInWithPhoneNumber(auth, formattedPhoneNumber, appVerifier)
-            .then((result) => {
+        signInWithPhoneNumber(auth, `+91${phone}`, window.recaptchaVerifier)
+            .then(result => {
                 confirmationResult = result;
                 phoneStep.classList.add('hidden');
                 otpStep.classList.remove('hidden');
-            }).catch((error) => {
-                console.error("SMS not sent", error);
-                alert("Failed to send OTP. Check console.");
-                window.recaptchaVerifier.render().then(function(widgetId) {
-                    grecaptcha.reset(widgetId);
-                });
-            });
-    } else {
-        alert("Please enter a valid 10-digit mobile number.");
-    }
+            }).catch(error => alert("Failed to send OTP."));
+    } else { alert("Enter a valid 10-digit number."); }
 });
 
 document.getElementById('verify-otp-btn').addEventListener('click', () => {
-    const code = otpInput.value;
-    if (code.length >= 4 && confirmationResult) {
-        confirmationResult.confirm(code).then(() => {
-            createSession();
-        }).catch((error) => {
-            console.error("Bad OTP", error);
-            alert("Invalid OTP. Try again.");
-        });
-    } else {
-        alert("Please wait for the OTP to arrive.");
+    if (otpInput.value.length >= 4 && confirmationResult) {
+        confirmationResult.confirm(otpInput.value).then(() => createSession())
+        .catch(() => alert("Invalid OTP."));
     }
 });
 
@@ -139,13 +119,10 @@ document.getElementById('back-btn').addEventListener('click', () => {
     phoneStep.classList.remove('hidden');
 });
 
-// --- Dashboard Link Generation ---
+// --- Link Generation ---
 document.getElementById('generate-link-btn').addEventListener('click', () => {
-    const randomStr = Math.random().toString(36).substring(2, 11);
-    currentRoom = `room-${randomStr}`;
-    
-    const baseUrl = window.location.origin + window.location.pathname;
-    meetingLinkInput.value = `${baseUrl}?room=${currentRoom}`;
+    currentRoom = `room-${Math.random().toString(36).substring(2, 11)}`;
+    meetingLinkInput.value = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
     linkContainer.classList.remove('hidden');
 });
 
@@ -155,133 +132,129 @@ document.getElementById('copy-btn').addEventListener('click', () => {
     alert("Link copied!");
 });
 
-// --- WebRTC Logic ---
+document.getElementById('join-now-btn').addEventListener('click', () => {
+    showView(meetingView);
+    startGroupCall();
+});
 
-async function openUserMedia() {
+// --- Group WebRTC Logic ---
+
+async function startGroupCall() {
+    // 1. Turn on the camera and put it in the grid
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    remoteStream = new MediaStream();
     
+    const localVideo = document.createElement('video');
+    localVideo.id = 'local-video';
     localVideo.srcObject = localStream;
-    remoteVideo.srcObject = remoteStream;
-}
+    localVideo.autoplay = true;
+    localVideo.muted = true; // Don't hear yourself
+    localVideo.playsInline = true;
+    videoGrid.appendChild(localVideo);
 
-function registerPeerConnectionListeners() {
-    peerConnection.addEventListener('track', event => {
-        event.streams[0].getTracks().forEach(track => {
-            remoteStream.addTrack(track);
-        });
-        
-        // UI TRIGGER: When their video arrives, show it and shrink ours!
-        remoteVideo.classList.remove('hidden-video');
-        localVideo.classList.add('pip');
-    });
-}
-
-// Host creates the connection offer
-async function createRoom(roomId) {
-    const roomRef = doc(db, 'rooms', roomId);
-    peerConnection = new RTCPeerConnection(configuration);
-    registerPeerConnectionListeners();
-
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    const callerCandidatesCollection = collection(roomRef, 'callerCandidates');
-    peerConnection.addEventListener('icecandidate', event => {
-        if (!event.candidate) return;
-        addDoc(callerCandidatesCollection, event.candidate.toJSON());
-    });
-
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    const roomWithOffer = {
-        offer: {
-            type: offer.type,
-            sdp: offer.sdp,
-        },
-    };
-    await setDoc(roomRef, roomWithOffer);
-
-    // Wait for the guest to reply with an Answer
-    onSnapshot(roomRef, async snapshot => {
-        const data = snapshot.data();
-        if (!peerConnection.currentRemoteDescription && data && data.answer) {
-            const rtcSessionDescription = new RTCSessionDescription(data.answer);
-            await peerConnection.setRemoteDescription(rtcSessionDescription);
-
-            // FIX: Only gather their ICE candidates AFTER the handshake is done
-            onSnapshot(collection(roomRef, 'calleeCandidates'), snapshot => {
-                snapshot.docChanges().forEach(async change => {
-                    if (change.type === 'added') {
-                        let data = change.doc.data();
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(data));
-                    }
-                });
-            });
-        }
-    });
-}
-
-// Guest joins and answers the connection
-async function joinRoomById(roomId) {
-    const roomRef = doc(db, 'rooms', roomId);
-    const roomSnapshot = await getDoc(roomRef);
-
-    if (!roomSnapshot.exists()) {
-        alert("Meeting room is waiting for host to join, or doesn't exist.");
-        return;
-    }
-
-    peerConnection = new RTCPeerConnection(configuration);
-    registerPeerConnectionListeners();
-
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    const calleeCandidatesCollection = collection(roomRef, 'calleeCandidates');
-    peerConnection.addEventListener('icecandidate', event => {
-        if (!event.candidate) return;
-        addDoc(calleeCandidatesCollection, event.candidate.toJSON());
-    });
-
-    const offer = roomSnapshot.data().offer;
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-
-    const roomWithAnswer = {
-        answer: {
-            type: answer.type,
-            sdp: answer.sdp,
-        }
-    };
-    await setDoc(roomRef, roomWithAnswer, { merge: true });
-
-    // FIX: Only gather host ICE candidates AFTER we set the remote description
-    onSnapshot(collection(roomRef, 'callerCandidates'), snapshot => {
-        snapshot.docChanges().forEach(async change => {
+    const roomRef = doc(db, 'rooms', currentRoom);
+    const participantsRef = collection(roomRef, 'participants');
+    
+    // 2. Open my personal "inbox" to receive offers from other people
+    const myInboxRef = collection(roomRef, `inbox_${myUserId}`);
+    onSnapshot(myInboxRef, snapshot => {
+        snapshot.docChanges().forEach(change => {
             if (change.type === 'added') {
-                let data = change.doc.data();
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data));
+                processIncomingSignal(change.doc.data());
             }
         });
     });
+
+    // 3. Look at who is already in the room, and call each of them
+    const existingUsers = await getDocs(participantsRef);
+    existingUsers.forEach(userDoc => {
+        const targetUserId = userDoc.id;
+        if (targetUserId !== myUserId) {
+            initiateCallToUser(targetUserId);
+        }
+    });
+
+    // 4. Announce my arrival so future people know I'm here
+    await setDoc(doc(participantsRef, myUserId), { joinedAt: Date.now() });
 }
 
-// --- Join Button Listeners ---
-document.getElementById('join-now-btn').addEventListener('click', async () => {
-    showView(meetingView);
-    await openUserMedia();
-    await createRoom(currentRoom);
-});
+// Builds a video tunnel to one specific person
+function createPeerConnection(targetUserId) {
+    const pc = new RTCPeerConnection(configuration);
+    peerConnections[targetUserId] = pc; // Save it to the dictionary
 
-async function startGuestCall() {
-    await openUserMedia();
-    await joinRoomById(currentRoom);
+    // Shove my video into the tunnel
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    // When they find a network route to me, send it to their inbox
+    pc.onicecandidate = event => {
+        if (event.candidate) {
+            sendSignal(targetUserId, { type: 'candidate', candidate: event.candidate.toJSON(), sender: myUserId });
+        }
+    };
+
+    // When their video pops out of the tunnel, put it on screen
+    const remoteStream = new MediaStream();
+    const remoteVideo = document.createElement('video');
+    remoteVideo.id = `video-${targetUserId}`;
+    remoteVideo.autoplay = true;
+    remoteVideo.playsInline = true;
+
+    pc.ontrack = event => {
+        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+        if (!remoteVideo.srcObject) {
+            remoteVideo.srcObject = remoteStream;
+            videoGrid.appendChild(remoteVideo);
+        }
+    };
+
+    // If they leave, remove their video
+    pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            remoteVideo.remove();
+            delete peerConnections[targetUserId];
+        }
+    };
+
+    return pc;
+}
+
+// The action of calling an existing user
+async function initiateCallToUser(targetUserId) {
+    const pc = createPeerConnection(targetUserId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    sendSignal(targetUserId, { type: 'offer', sdp: offer.sdp, sender: myUserId });
+}
+
+// Processing the mail in our inbox
+async function processIncomingSignal(data) {
+    const { sender, type, sdp, candidate } = data;
+
+    if (type === 'offer') {
+        // Someone new joined and is calling us! Answer them.
+        const pc = createPeerConnection(sender);
+        await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal(sender, { type: 'answer', sdp: answer.sdp, sender: myUserId });
+    } 
+    else if (type === 'answer') {
+        // They replied to our call
+        const pc = peerConnections[sender];
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+    } 
+    else if (type === 'candidate') {
+        // Network routing data
+        const pc = peerConnections[sender];
+        if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+}
+
+// Utility to send mail to someone else's inbox
+async function sendSignal(targetUserId, message) {
+    const targetInbox = collection(db, 'rooms', currentRoom, `inbox_${targetUserId}`);
+    await addDoc(targetInbox, message);
 }
 
 // --- Video Controls ---
@@ -298,11 +271,12 @@ document.getElementById('toggle-cam-btn').addEventListener('click', () => {
 });
 
 document.getElementById('hangup-btn').addEventListener('click', () => {
+    // Turn off camera
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
     }
-    if (peerConnection) {
-        peerConnection.close();
-    }
+    // Sever all connections to all friends
+    Object.values(peerConnections).forEach(pc => pc.close());
+    
     window.location.href = window.location.pathname;
 });
