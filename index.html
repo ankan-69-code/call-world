@@ -57,10 +57,10 @@
         </main>
     </div>
 
-    <div id="meeting-view" class="view-container hidden">
-        <div class="video-grid">
+  <div id="meeting-view" class="view-container hidden">
+        <div class="video-container">
+            <video id="remote-video" class="hidden-video" autoplay playsinline></video>
             <video id="local-video" autoplay playsinline muted></video>
-            <video id="remote-video" autoplay playsinline></video>
         </div>
         
         <div class="meeting-controls">
@@ -70,6 +70,6 @@
         </div>
     </div>
     
-    <script type="module" src="script.js?v=webrtc"></script>
+    <script type="module" src="script.js?v=pip"></script>
 </body>
 </html>
