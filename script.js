@@ -244,7 +244,6 @@ function createPeerConnection(targetUserId) {
     return pc;
 }
 
-// REPLACE your current processIncomingSignal with this:
 async function processIncomingSignal(data) {
     const { sender, type, sdp, candidate } = data;
     
@@ -277,6 +276,7 @@ async function processIncomingSignal(data) {
         console.error("Signal processing error:", error);
     }
 }
+
 async function sendSignal(targetUserId, message) {
     await addDoc(collection(db, 'rooms', currentRoom, `inbox_${targetUserId}`), message);
 }
@@ -298,12 +298,11 @@ document.getElementById('toggle-cam-btn').addEventListener('click', () => {
     icon.parentElement.classList.toggle('danger', !videoTrack.enabled);
 });
 
-// REPLACE your current hangup listener with this:
+// Hangup and Tab-Close Listeners
 document.getElementById('hangup-btn').addEventListener('click', () => {
     leaveCallGracefully();
 });
 
-// Also trigger this if they just close the browser tab
 window.addEventListener('beforeunload', () => {
     leaveCallGracefully();
 });
@@ -324,7 +323,7 @@ function leaveCallGracefully() {
     
     window.location.href = window.location.pathname;
 }
-});
+
 // ==========================================
 //   OS-LEVEL PICTURE-IN-PICTURE (FLOAT)
 // ==========================================
@@ -332,24 +331,26 @@ function leaveCallGracefully() {
 const pipBtn = document.getElementById('pip-btn');
 
 // 1. Manual Click (Always works, bypasses browser security blocks)
-pipBtn.addEventListener('click', async () => {
-    // Grab the first remote video in the grid
-    const remoteVideo = videoGrid.querySelector('video');
-    
-    if (!remoteVideo) {
-        return alert("No one else is in the call yet!");
-    }
-
-    try {
-        if (document.pictureInPictureElement) {
-            await document.exitPictureInPicture();
-        } else {
-            await remoteVideo.requestPictureInPicture();
+if(pipBtn) {
+    pipBtn.addEventListener('click', async () => {
+        // Grab the first remote video in the grid
+        const remoteVideo = videoGrid.querySelector('video');
+        
+        if (!remoteVideo) {
+            return alert("No one else is in the call yet!");
         }
-    } catch (error) {
-        console.error("PiP failed:", error);
-    }
-});
+
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else {
+                await remoteVideo.requestPictureInPicture();
+            }
+        } catch (error) {
+            console.error("PiP failed:", error);
+        }
+    });
+}
 
 // 2. Automatic Float (When you change tabs or go to home screen)
 document.addEventListener("visibilitychange", async () => {
