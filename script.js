@@ -167,7 +167,6 @@ function updateLayout() {
 // --- Group WebRTC Logic ---
 async function startGroupCall() {
     try {
-        // Request camera with optimized constraints
         localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         
         const localVideo = document.createElement('video');
@@ -182,20 +181,17 @@ async function startGroupCall() {
         const roomRef = doc(db, 'rooms', currentRoom);
         const participantsRef = collection(roomRef, 'participants');
         
-        // Listen for incoming connection offers
         onSnapshot(collection(roomRef, `inbox_${myUserId}`), snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === 'added') processIncomingSignal(change.doc.data());
             });
         });
 
-        // Call everyone already in the room
         const existingUsers = await getDocs(participantsRef);
         existingUsers.forEach(userDoc => {
             if (userDoc.id !== myUserId) initiateCallToUser(userDoc.id);
         });
 
-        // Announce presence
         await setDoc(doc(participantsRef, myUserId), { joinedAt: Date.now() });
         
     } catch (error) {
@@ -231,7 +227,6 @@ function createPeerConnection(targetUserId) {
         }
     };
 
-    // Clean up when someone leaves
     pc.oniceconnectionstatechange = () => {
         if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
             const vidToRemove = document.getElementById(`video-${targetUserId}`);
@@ -244,10 +239,17 @@ function createPeerConnection(targetUserId) {
     return pc;
 }
 
+// THE MISSING FUNCTION IS BACK!
+async function initiateCallToUser(targetUserId) {
+    const pc = createPeerConnection(targetUserId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal(targetUserId, { type: 'offer', sdp: offer.sdp, sender: myUserId });
+}
+
 async function processIncomingSignal(data) {
     const { sender, type, sdp, candidate } = data;
     
-    // THE NEW FIX: If they say bye, instantly kill their video
     if (type === 'bye') {
         const vidToRemove = document.getElementById(`video-${sender}`);
         if (vidToRemove) vidToRemove.remove();
@@ -308,19 +310,15 @@ window.addEventListener('beforeunload', () => {
 });
 
 function leaveCallGracefully() {
-    // 1. Tell everyone we are leaving
     Object.keys(peerConnections).forEach(targetUserId => {
         sendSignal(targetUserId, { type: 'bye', sender: myUserId });
     });
 
-    // 2. Shut down our camera
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
     }
     
-    // 3. Sever our connections
     Object.values(peerConnections).forEach(pc => pc.close());
-    
     window.location.href = window.location.pathname;
 }
 
@@ -330,10 +328,8 @@ function leaveCallGracefully() {
 
 const pipBtn = document.getElementById('pip-btn');
 
-// 1. Manual Click (Always works, bypasses browser security blocks)
 if(pipBtn) {
     pipBtn.addEventListener('click', async () => {
-        // Grab the first remote video in the grid
         const remoteVideo = videoGrid.querySelector('video');
         
         if (!remoteVideo) {
@@ -352,17 +348,13 @@ if(pipBtn) {
     });
 }
 
-// 2. Automatic Float (When you change tabs or go to home screen)
 document.addEventListener("visibilitychange", async () => {
     const remoteVideo = videoGrid.querySelector('video');
     
-    // If there is no remote video, or the browser doesn't support PiP, do nothing
     if (!remoteVideo || !document.pictureInPictureEnabled) return;
 
     if (document.hidden) {
-        // User left the tab -> Push to OS floating window
         try {
-            // Note: Some mobile browsers block this unless the user just clicked something.
             if (!document.pictureInPictureElement) {
                 await remoteVideo.requestPictureInPicture();
             }
@@ -370,7 +362,6 @@ document.addEventListener("visibilitychange", async () => {
             console.warn("Browser blocked auto-PiP. User must use the manual button.", error);
         }
     } else {
-        // User came back to the tab -> Pull video back into the website
         try {
             if (document.pictureInPictureElement) {
                 await document.exitPictureInPicture();
