@@ -244,15 +244,22 @@ function createPeerConnection(targetUserId) {
     return pc;
 }
 
-async function initiateCallToUser(targetUserId) {
-    const pc = createPeerConnection(targetUserId);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    sendSignal(targetUserId, { type: 'offer', sdp: offer.sdp, sender: myUserId });
-}
-
+// REPLACE your current processIncomingSignal with this:
 async function processIncomingSignal(data) {
     const { sender, type, sdp, candidate } = data;
+    
+    // THE NEW FIX: If they say bye, instantly kill their video
+    if (type === 'bye') {
+        const vidToRemove = document.getElementById(`video-${sender}`);
+        if (vidToRemove) vidToRemove.remove();
+        if (peerConnections[sender]) {
+            peerConnections[sender].close();
+            delete peerConnections[sender];
+        }
+        updateLayout();
+        return;
+    }
+
     const pc = peerConnections[sender] || createPeerConnection(sender);
 
     try {
@@ -270,7 +277,6 @@ async function processIncomingSignal(data) {
         console.error("Signal processing error:", error);
     }
 }
-
 async function sendSignal(targetUserId, message) {
     await addDoc(collection(db, 'rooms', currentRoom, `inbox_${targetUserId}`), message);
 }
