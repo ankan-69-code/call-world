@@ -298,10 +298,32 @@ document.getElementById('toggle-cam-btn').addEventListener('click', () => {
     icon.parentElement.classList.toggle('danger', !videoTrack.enabled);
 });
 
+// REPLACE your current hangup listener with this:
 document.getElementById('hangup-btn').addEventListener('click', () => {
-    if (localStream) localStream.getTracks().forEach(track => track.stop());
+    leaveCallGracefully();
+});
+
+// Also trigger this if they just close the browser tab
+window.addEventListener('beforeunload', () => {
+    leaveCallGracefully();
+});
+
+function leaveCallGracefully() {
+    // 1. Tell everyone we are leaving
+    Object.keys(peerConnections).forEach(targetUserId => {
+        sendSignal(targetUserId, { type: 'bye', sender: myUserId });
+    });
+
+    // 2. Shut down our camera
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+    
+    // 3. Sever our connections
     Object.values(peerConnections).forEach(pc => pc.close());
+    
     window.location.href = window.location.pathname;
+}
 });
 // ==========================================
 //   OS-LEVEL PICTURE-IN-PICTURE (FLOAT)
