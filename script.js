@@ -297,3 +297,57 @@ document.getElementById('hangup-btn').addEventListener('click', () => {
     Object.values(peerConnections).forEach(pc => pc.close());
     window.location.href = window.location.pathname;
 });
+// ==========================================
+//   OS-LEVEL PICTURE-IN-PICTURE (FLOAT)
+// ==========================================
+
+const pipBtn = document.getElementById('pip-btn');
+
+// 1. Manual Click (Always works, bypasses browser security blocks)
+pipBtn.addEventListener('click', async () => {
+    // Grab the first remote video in the grid
+    const remoteVideo = videoGrid.querySelector('video');
+    
+    if (!remoteVideo) {
+        return alert("No one else is in the call yet!");
+    }
+
+    try {
+        if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture();
+        } else {
+            await remoteVideo.requestPictureInPicture();
+        }
+    } catch (error) {
+        console.error("PiP failed:", error);
+    }
+});
+
+// 2. Automatic Float (When you change tabs or go to home screen)
+document.addEventListener("visibilitychange", async () => {
+    const remoteVideo = videoGrid.querySelector('video');
+    
+    // If there is no remote video, or the browser doesn't support PiP, do nothing
+    if (!remoteVideo || !document.pictureInPictureEnabled) return;
+
+    if (document.hidden) {
+        // User left the tab -> Push to OS floating window
+        try {
+            // Note: Some mobile browsers block this unless the user just clicked something.
+            if (!document.pictureInPictureElement) {
+                await remoteVideo.requestPictureInPicture();
+            }
+        } catch (error) {
+            console.warn("Browser blocked auto-PiP. User must use the manual button.", error);
+        }
+    } else {
+        // User came back to the tab -> Pull video back into the website
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            }
+        } catch (error) {
+            console.error("Could not exit PiP:", error);
+        }
+    }
+});
