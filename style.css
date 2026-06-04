@@ -303,31 +303,62 @@ video {
     box-shadow: 0 8px 20px rgba(239, 68, 68, 0.5);
 }
 /* --- WebRTC Group Video Grid --- */
+/* =========================================
+   GROUP VIDEO GRID & PIP LOGIC
+========================================= */
+
 .video-grid {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: 15px;
+    align-content: center; /* Centers rows vertically */
     width: 100%;
     height: 100%;
-    padding: 15px;
-    padding-bottom: 100px; /* Space for the controls */
-    overflow-y: auto;
+    padding: 20px;
+    padding-bottom: 110px; /* Leaves space for the controls */
+    gap: 15px;
 }
 
+/* Remote Videos - Auto-scaling to prevent scrolling */
 .video-grid video {
-    flex: 1 1 40%; /* Automatically scales to fit multiple people */
-    min-width: 250px;
-    max-width: 500px;
+    flex: 1 1 30%; /* Tries to take up 1/3 of the row */
+    max-width: 48%; /* Never bigger than half the screen */
+    max-height: 40vh; /* Restricts height so rows don't cause scrolling */
     aspect-ratio: 16/9;
+    object-fit: cover;
     border-radius: 16px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     background-color: #222;
     transition: all 0.3s ease;
 }
 
+/* Local Video (Starts Full Screen, becomes PiP) */
 #local-video {
-    transform: scaleX(-1); /* Keep your own camera mirrored */
-    border: 2px solid var(--accent-color); /* Highlight your own box */
+    position: absolute;
+    top: 0; 
+    left: 0;
+    width: 100%; 
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    z-index: 5; /* Stays beneath the controls */
+}
+
+/* When Javascript detects guests, it adds this class to shrink you */
+#local-video.pip {
+    top: auto; 
+    left: auto;
+    bottom: 110px; /* Sits right above the controls */
+    right: 20px;
+    width: 25%;
+    min-width: 150px;
+    max-width: 250px;
+    height: auto;
+    aspect-ratio: 16/9;
+    border-radius: 12px;
+    border: 2px solid var(--accent-color);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.8);
+    z-index: 15;
 }
