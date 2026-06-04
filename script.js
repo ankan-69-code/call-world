@@ -51,30 +51,32 @@ const mediaConstraints = {
 };
 
 // ==========================================
-//   AUTHENTICATION & ROUTING (NATIVE)
+//   ROUTING: GUEST MODE VS HOST MODE
 // ==========================================
 
-// Firebase automatically checks if the user is already logged in
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        // 1. User is logged in -> Check if they clicked a meeting link
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomParam = urlParams.get('room');
+const urlParams = new URLSearchParams(window.location.search);
+const roomParam = urlParams.get('room');
 
-        if (roomParam) {
-            currentRoom = roomParam;
-            showView(views.meeting);
-            startGroupCall();
-        } else {
-            showView(views.dashboard);
-        }
+// 1. INSTANT GUEST JOIN: If a link is clicked, skip login entirely!
+if (roomParam) {
+    currentRoom = roomParam;
+    showView(views.meeting);
+    startGroupCall();
+}
+
+// 2. DASHBOARD MODE: Only check Google Auth if they are NOT clicking a link
+onAuthStateChanged(auth, (user) => {
+    // If they are a guest joining a room, ignore this auth check so it doesn't kick them out
+    if (roomParam) return;
+
+    if (user) {
+        showView(views.dashboard);
     } else {
-        // 2. User is logged out -> Show Login Screen
         showView(views.auth);
     }
 });
 
-// Manual Login Trigger
+// Manual Google Login Trigger (For the Host)
 document.getElementById('google-signin-btn').addEventListener('click', () => {
     signInWithPopup(auth, provider).catch((err) => {
         console.error("Auth Error:", err);
@@ -82,10 +84,9 @@ document.getElementById('google-signin-btn').addEventListener('click', () => {
     });
 });
 
-// Logout Logic
+// Host Logout Logic
 document.getElementById('logout-btn').addEventListener('click', () => {
     signOut(auth).then(() => {
-        // Reset URL and refresh to show login screen
         window.location.href = window.location.origin + window.location.pathname;
     });
 });
@@ -142,25 +143,22 @@ async function startGroupCall() {
 
         const roomRef = doc(db, 'rooms', currentRoom);
         
-        // Listen for signals
         onSnapshot(collection(roomRef, `inbox_${myUserId}`), snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === 'added') processIncomingSignal(change.doc.data());
             });
         });
 
-        // Call existing participants
         const existingUsers = await getDocs(collection(roomRef, 'participants'));
         existingUsers.forEach(userDoc => {
             if (userDoc.id !== myUserId) initiateCallToUser(userDoc.id);
         });
 
-        // Add self to participants
         await setDoc(doc(collection(roomRef, 'participants'), myUserId), { joinedAt: Date.now() });
 
     } catch (error) {
         console.error("Camera error:", error);
-        alert("Camera access denied.");
+        alert("Camera access denied. Please allow permissions in your browser.");
     }
 }
 
